@@ -1,0 +1,13 @@
+[package]
+name = "linear_solver"
+version = "0.1.0"
+edition = "2018"
+author = "neuring"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+anyhow = "1.0.45"
+num = "0.4.0"
+structopt = "0.3.25"
+thiserror = "1.0.30"
