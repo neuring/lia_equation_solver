@@ -1,8 +1,8 @@
-use std::{convert::TryInto};
+use std::{convert::TryInto, ops::Not};
 
 use thiserror::Error;
 
-use super::EquationSystem;
+use crate::system::System;
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -90,11 +90,14 @@ fn parse_equation<'a>(input: &'a str, storage: &mut [i32]) -> Result<()> {
     Ok(())
 }
 
-pub fn parse(input: &str) -> Result<EquationSystem> {
-    let mut lines = input.lines().filter_map(|line| {
-        let trimmed = line.trim();
-        (!trimmed.is_empty()).then(|| trimmed)
-    });
+fn is_empty_line(line: &str) -> Option<&str> {
+    let line = line.trim();
+
+    (line.is_empty() || line.starts_with("#")).not().then(|| line)
+}
+
+pub fn parse(input: &str) -> Result<System> {
+    let mut lines = input.lines().filter_map(is_empty_line);
 
     let header = parse_header(lines.next().ok_or(UnexpectedEndOfInput)?)?;
 
@@ -113,9 +116,9 @@ pub fn parse(input: &str) -> Result<EquationSystem> {
         )?;
     }
 
-    Ok(EquationSystem {
-        variables: header.variables,
-        equations: header.equations,
-        data: result,
-    })
+    Ok(System::new(
+        header.variables,
+        header.equations,
+        result,
+    ))
 }
