@@ -3,12 +3,9 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 
 mod parser;
-
-pub struct EquationSystem {
-    variables: usize,
-    equations: usize,
-    data: Vec<i32>,
-}
+mod system;
+mod algo;
+mod math;
 
 #[derive(Debug, StructOpt)]
 struct Config {
@@ -20,7 +17,13 @@ fn main() -> anyhow::Result<()> {
 
     let input = std::fs::read_to_string(config.input)?;
 
-    let result = parser::parse(&input)?;
+    let mut result = parser::parse(&input)?;
+
+    dbg!(&result);
+
+    algo::solve_equation(&mut result);
+
+    dbg!(&result);
 
     Ok(())
 }
