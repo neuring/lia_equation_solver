@@ -3,6 +3,7 @@ use std::fmt;
 pub struct System {
     variables: usize,
     equations: usize,
+
     data: Vec<i32>,
 }
 
@@ -18,7 +19,7 @@ impl fmt::Debug for System {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct EquationView<'a> {
     data: &'a [i32],
 }
@@ -28,7 +29,7 @@ pub struct EquationViewMut<'a> {
     data: &'a mut [i32],
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Equation {
     data: Vec<i32>,
 }
