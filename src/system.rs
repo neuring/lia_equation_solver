@@ -1,13 +1,108 @@
 use std::fmt;
 
+use itertools;
+
+use crate::util;
+
+#[derive(Debug, Clone, Copy)]
+pub struct VariableIndex(usize);
+
 pub struct System {
+    varmap: Vec<VariableIndex>,
+    next_var_index: usize,
+
+    storage: EquationStorage,
+}
+
+impl System {
+    pub fn new(variables: usize) -> Self {
+        Self {
+            varmap: (0..variables).map(|i| VariableIndex(i)).collect(),
+            next_var_index: variables,
+
+            storage: EquationStorage::new(variables),
+        }
+    }
+
+    pub fn new_variable(&mut self) -> VariableIndex {
+        let var = VariableIndex(self.next_var_index);
+        self.next_var_index += 1;
+        var
+    }
+
+    pub fn map_variable(&mut self, term_idx: usize, variable_idx: VariableIndex) {
+        self.varmap[term_idx] = variable_idx;
+    }
+
+    pub fn add_equation(&mut self) -> EquationViewMut {
+        self.storage.add_equation()
+    }
+
+    pub fn get_storage(&self) -> &EquationStorage {
+        &self.storage
+    }
+
+    pub fn get_storage_mut(&mut self) -> &mut EquationStorage {
+        &mut self.storage
+    }
+
+    pub fn equations_display(&self) -> impl fmt::Display + '_ {
+        struct DisplayableEquations<'a>(&'a System);
+
+        impl<'a> fmt::Display for DisplayableEquations<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                for equation in
+                    self.0.storage.iter_equations().filter(|eq| !eq.is_empty())
+                {
+                    let mut terms: Vec<_> = equation
+                        .iter_coefficients()
+                        .enumerate()
+                        .filter(|&(_, coef)| coef != 0)
+                        .map(|(idx, coef)| (coef, self.0.varmap[idx]))
+                        .collect();
+
+                    terms.sort_by_key(|(_, i)| i.0);
+
+                    let equation_lhs = if terms.is_empty() {
+                        "0".to_owned()
+                    } else {
+                        itertools::join(
+                            terms.iter().map(|&(coef, idx)| {
+                                let var = if idx.0 < self.0.storage.variables {
+                                    'x'
+                                } else {
+                                    'y'
+                                };
+
+                                format!(
+                                    "{}{}{}",
+                                    coef,
+                                    var,
+                                    util::subscript(idx.0 as u32)
+                                )
+                            }),
+                            " + ",
+                        )
+                    };
+
+                    writeln!(f, "{} = {}", equation_lhs, equation.get_result())?;
+                }
+                Ok(())
+            }
+        }
+
+        DisplayableEquations(self)
+    }
+}
+
+pub struct EquationStorage {
     variables: usize,
     equations: usize,
 
     data: Vec<i32>,
 }
 
-impl fmt::Debug for System {
+impl fmt::Debug for EquationStorage {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let equations: Vec<_> = self.iter_equations().collect();
 
@@ -34,15 +129,26 @@ pub struct Equation {
     data: Vec<i32>,
 }
 
-impl System {
-    pub fn new(variables: usize, equations: usize, data: Vec<i32>) -> Self {
-        assert_eq!((variables + 1) * equations, data.len());
-
+impl EquationStorage {
+    pub fn new(variables: usize) -> Self {
         Self {
             variables,
-            equations,
-            data,
+            equations: 0,
+            data: Vec::new(),
         }
+    }
+
+    pub fn add_equation(&mut self) -> EquationViewMut {
+        self.data
+            .resize(self.data.len() + self.get_equation_size(), 0);
+
+        let equation_idx = self.equations;
+
+        self.equations += 1;
+
+        let view = self.get_equation_mut(equation_idx);
+
+        view
     }
 
     /// Returns the number of terms in an equation.
@@ -91,7 +197,6 @@ impl System {
     pub fn iter_equations_mut(
         &mut self,
     ) -> impl Iterator<Item = EquationViewMut<'_>> + '_ {
-
         let equation_size = self.get_equation_size();
         self.data
             .chunks_exact_mut(equation_size)
@@ -120,6 +225,10 @@ impl<'a> EquationView<'a> {
         Equation {
             data: self.data.to_owned(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.iter().all(|&x| x == 0)
     }
 }
 
@@ -151,6 +260,10 @@ impl<'a> EquationViewMut<'a> {
         Equation {
             data: self.data.to_owned(),
         }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.iter().all(|&x| x == 0)
     }
 }
 

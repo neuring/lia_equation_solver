@@ -1,4 +1,7 @@
-use crate::{math, system::System};
+use crate::{
+    math,
+    system::{EquationStorage, System},
+};
 
 pub enum Result {
     Sat,
@@ -6,23 +9,32 @@ pub enum Result {
 }
 
 pub fn solve_equation(system: &mut System) -> Result {
-    if !preprocess(system) {
+    if !preprocess(system.get_storage_mut()) {
         return Result::Unsat;
     };
 
-    while let Some(result) = find_smallest_non_zero_coefficient(system) {
+    println!("After preprocessing\n{}", system.equations_display());
+
+    while let Some(result) = find_smallest_non_zero_coefficient(system.get_storage())
+    {
         if result.coefficient.abs() == 1 {
-            eliminate_equation(system, result.equation_idx, result.coefficient_idx);
+            eliminate_equation(
+                system.get_storage_mut(),
+                result.equation_idx,
+                result.coefficient_idx,
+            );
+            println!("After elimination\n{}", system.equations_display());
         } else {
             assert!(result.coefficient != 0);
             reduce_coefficients(system, result.equation_idx, result.coefficient_idx);
+            println!("After reduce\n{}", system.equations_display());
         }
     }
 
     Result::Sat
 }
 
-fn preprocess(system: &mut System) -> bool {
+fn preprocess(system: &mut EquationStorage) -> bool {
     for mut equation in system.iter_equations_mut() {
         let gcd = math::gcd(equation.get_coefficient_slice());
 
@@ -47,7 +59,9 @@ struct SearchResult {
     coefficient: i32,
 }
 
-fn find_smallest_non_zero_coefficient(system: &System) -> Option<SearchResult> {
+fn find_smallest_non_zero_coefficient(
+    system: &EquationStorage,
+) -> Option<SearchResult> {
     let mut min: Option<SearchResult> = None;
 
     for (equation_idx, equation) in system.iter_equations().enumerate() {
@@ -73,7 +87,7 @@ fn find_smallest_non_zero_coefficient(system: &System) -> Option<SearchResult> {
 }
 
 fn eliminate_equation(
-    system: &mut System,
+    system: &mut EquationStorage,
     eliminated_equation_idx: usize,
     eliminated_coefficient_idx: usize,
 ) {
@@ -85,7 +99,11 @@ fn eliminate_equation(
 
     let sign = if eliminated_coefficient > 0 { 1 } else { -1 };
 
-    for (equation_idx, mut equation) in system.iter_equations_mut().enumerate() {
+    for (equation_idx, mut equation) in system
+        .iter_equations_mut()
+        .filter(|eq| !eq.is_empty())
+        .enumerate()
+    {
         if equation_idx == eliminated_equation_idx {
             equation.clear();
         } else {
@@ -108,7 +126,9 @@ fn reduce_coefficients(
     equation_idx: usize,
     coefficient_idx: usize,
 ) {
-    let mut equation = system.get_equation_mut(equation_idx);
+    let storage = system.get_storage_mut();
+
+    let mut equation = storage.get_equation_mut(equation_idx);
 
     let mut coefficient = *equation.get_coefficient(coefficient_idx);
 
@@ -132,4 +152,7 @@ fn reduce_coefficients(
 
     let result = equation.get_result();
     *result = math::rounded_divisor(*result, m) + math::special_mod(*result, m);
+
+    let new_var = system.new_variable();
+    system.map_variable(original_coefficient_idx, new_var);
 }

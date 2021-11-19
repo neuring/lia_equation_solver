@@ -2,7 +2,7 @@ use std::{convert::TryInto, ops::Not};
 
 use thiserror::Error;
 
-use crate::system::System;
+use crate::system::{EquationViewMut, System};
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -55,9 +55,7 @@ fn parse_header(header: &str) -> Result<HeaderData> {
     })
 }
 
-fn parse_equation<'a>(input: &'a str, storage: &mut [i32]) -> Result<()> {
-    let equation_size = storage.len();
-
+fn parse_equation<'a>(input: &'a str, mut storage: EquationViewMut) -> Result<()> {
     let mut values = input
         .split_whitespace()
         .map(|val| val.parse::<i32>().map_err(|_| NotANumber(val.to_string())));
@@ -70,8 +68,8 @@ fn parse_equation<'a>(input: &'a str, storage: &mut [i32]) -> Result<()> {
 
         let index: usize = index.try_into().map_err(|_| InvalidIndex(index))?;
 
-        if index < equation_size {
-            storage[index] = coefficient;
+        if 0 < index && index < storage.get_coefficient_slice().len() + 1 {
+            *storage.get_coefficient(index - 1) = coefficient;
         } else {
             return Err(IndexTooLarge(index));
         }
@@ -79,7 +77,7 @@ fn parse_equation<'a>(input: &'a str, storage: &mut [i32]) -> Result<()> {
 
     let equation_result = values.next().ok_or(MissingValue("equation result"))??;
 
-    storage[0] = equation_result;
+    *storage.get_result() = equation_result;
 
     let expected_zero = values.next().ok_or(MissingValue("trailing zero"))??;
 
@@ -97,18 +95,15 @@ fn is_empty_line(line: &str) -> Option<&str> {
 }
 
 pub fn parse(input: &str) -> Result<System> {
+
     let mut lines = input.lines().filter_map(is_empty_line);
 
     let header = parse_header(lines.next().ok_or(UnexpectedEndOfInput)?)?;
 
-    let equation_size = header.variables + 1;
+    let mut system = System::new(header.variables);
 
-    let mut result = vec![0; header.equations * equation_size];
-
-    for equation_idx in 0..header.equations {
-        let buffer_start = equation_idx * equation_size;
-        let equation_buffer =
-            &mut result[buffer_start..buffer_start + equation_size];
+    for _ in 0..header.equations {
+        let equation_buffer = system.add_equation();
 
         parse_equation(
             lines.next().ok_or(UnexpectedEndOfInput)?,
@@ -116,9 +111,5 @@ pub fn parse(input: &str) -> Result<System> {
         )?;
     }
 
-    Ok(System::new(
-        header.variables,
-        header.equations,
-        result,
-    ))
+    Ok(system)
 }

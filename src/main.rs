@@ -6,6 +6,7 @@ mod parser;
 mod system;
 mod algo;
 mod math;
+mod util;
 
 #[derive(Debug, StructOpt)]
 struct Config {
@@ -19,11 +20,11 @@ fn main() -> anyhow::Result<()> {
 
     let mut result = parser::parse(&input)?;
 
-    dbg!(&result);
+    println!("{}", result.equations_display());
 
     algo::solve_equation(&mut result);
 
-    dbg!(&result);
+    println!("{}", result.equations_display());
 
     Ok(())
 }

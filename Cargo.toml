@@ -8,6 +8,7 @@ author = "neuring"
 
 [dependencies]
 anyhow = "1.0.45"
+itertools = "0.10.1"
 num = "0.4.0"
 structopt = "0.3.25"
 thiserror = "1.0.30"
