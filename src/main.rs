@@ -22,9 +22,13 @@ fn main() -> anyhow::Result<()> {
 
     println!("{}", result.equations_display());
 
-    algo::solve_equation(&mut result);
+    let result = algo::solve_equation(&mut result);
 
-    println!("{}", result.equations_display());
+    if result == algo::Result::Sat {
+        println!("Solvable");
+    } else {
+        println!("Unsolvable");
+    }
 
     Ok(())
 }

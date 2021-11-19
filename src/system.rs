@@ -11,7 +11,11 @@ pub struct System {
     varmap: Vec<VariableIndex>,
     next_var_index: usize,
 
-    storage: EquationStorage,
+
+
+    pub scratch_pad: Vec<i64>,
+
+    pub storage: EquationStorage,
 }
 
 impl System {
@@ -19,6 +23,7 @@ impl System {
         Self {
             varmap: (0..variables).map(|i| VariableIndex(i)).collect(),
             next_var_index: variables,
+            scratch_pad: vec![0; variables],
 
             storage: EquationStorage::new(variables),
         }
@@ -99,7 +104,7 @@ pub struct EquationStorage {
     variables: usize,
     equations: usize,
 
-    data: Vec<i32>,
+    data: Vec<i64>,
 }
 
 impl fmt::Debug for EquationStorage {
@@ -116,17 +121,17 @@ impl fmt::Debug for EquationStorage {
 
 #[derive(Debug, Clone, Copy)]
 pub struct EquationView<'a> {
-    data: &'a [i32],
+    data: &'a [i64],
 }
 
 #[derive(Debug)]
 pub struct EquationViewMut<'a> {
-    data: &'a mut [i32],
+    data: &'a mut [i64],
 }
 
 #[derive(Debug, Clone)]
 pub struct Equation {
-    data: Vec<i32>,
+    data: Vec<i64>,
 }
 
 impl EquationStorage {
@@ -207,17 +212,17 @@ impl EquationStorage {
 }
 
 impl<'a> EquationView<'a> {
-    pub fn get_result(&self) -> i32 {
+    pub fn get_result(&self) -> i64 {
         return self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient(&self, idx: usize) -> i32 {
+    pub fn get_coefficient(&self, idx: usize) -> i64 {
         return self.data[idx + 1];
     }
 
-    pub fn iter_coefficients(&self) -> impl Iterator<Item = i32> + '_ {
+    pub fn iter_coefficients(&self) -> impl Iterator<Item = i64> + '_ {
         self.data.iter().skip(1).copied()
     }
 
@@ -233,21 +238,21 @@ impl<'a> EquationView<'a> {
 }
 
 impl<'a> EquationViewMut<'a> {
-    pub fn get_result(&mut self) -> &mut i32 {
+    pub fn get_result(&mut self) -> &mut i64 {
         return &mut self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient(&mut self, idx: usize) -> &mut i32 {
+    pub fn get_coefficient(&mut self, idx: usize) -> &mut i64 {
         return &mut self.data[idx + 1];
     }
 
-    pub fn iter_coefficients(&mut self) -> impl Iterator<Item = &mut i32> + '_ {
+    pub fn iter_coefficients(&mut self) -> impl Iterator<Item = &mut i64> + '_ {
         self.data.iter_mut().skip(1)
     }
 
-    pub fn get_coefficient_slice(&mut self) -> &mut [i32] {
+    pub fn get_coefficient_slice(&mut self) -> &mut [i64] {
         &mut self.data[1..]
     }
 
@@ -268,31 +273,31 @@ impl<'a> EquationViewMut<'a> {
 }
 
 impl Equation {
-    pub fn get_result_mut(&mut self) -> &mut i32 {
+    pub fn get_result_mut(&mut self) -> &mut i64 {
         return &mut self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient_mut(&mut self, idx: usize) -> &mut i32 {
+    pub fn get_coefficient_mut(&mut self, idx: usize) -> &mut i64 {
         return &mut self.data[idx + 1];
     }
 
-    pub fn iter_coefficients_mut(&mut self) -> impl Iterator<Item = &mut i32> + '_ {
+    pub fn iter_coefficients_mut(&mut self) -> impl Iterator<Item = &mut i64> + '_ {
         self.data.iter_mut().skip(1)
     }
 
-    pub fn get_result(&self) -> i32 {
+    pub fn get_result(&self) -> i64 {
         return self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient(&self, idx: usize) -> i32 {
+    pub fn get_coefficient(&self, idx: usize) -> i64 {
         return self.data[idx + 1];
     }
 
-    pub fn iter_coefficients(&self) -> impl Iterator<Item = i32> + '_ {
+    pub fn iter_coefficients(&self) -> impl Iterator<Item = i64> + '_ {
         self.data.iter().skip(1).copied()
     }
 }

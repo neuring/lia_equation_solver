@@ -1,6 +1,6 @@
 use num::Integer;
 
-pub fn gcd(values: &[i32]) -> i32 {
+pub fn gcd(values: &[i64]) -> i64 {
     if values.len() == 1 {
         values[0]
     } else {
@@ -16,11 +16,11 @@ pub fn gcd(values: &[i32]) -> i32 {
     }
 }
 
-pub fn special_mod(a: i32, b: i32) -> i32 {
-    a - b * ((a as f64) / (b as f64) + 0.5) as i32
+pub fn special_mod(a: i64, b: i64) -> i64 {
+    a - b * f64::floor((a as f64) / (b as f64) + 0.5) as i64
 }
 
 /// calculates ⌊a / b + 1/2 ⌋
-pub fn rounded_divisor(a: i32, b: i32) -> i32 {
-    ((a as f64) / (b as f64) + 0.5) as i32
+pub fn rounded_divisor(a: i64, b: i64) -> i64 {
+    f64::floor((a as f64) / (b as f64) + 0.5) as i64
 }

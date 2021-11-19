@@ -19,10 +19,10 @@ pub enum ParseError {
     IndexTooLarge(usize),
 
     #[error("Expected trailing zero is not zero ({0})..")]
-    TrailingZeroNotZero(i32),
+    TrailingZeroNotZero(i64),
 
     #[error("Index {0} is invalid")]
-    InvalidIndex(i32)
+    InvalidIndex(i64)
 }
 
 use ParseError::*;
@@ -58,7 +58,7 @@ fn parse_header(header: &str) -> Result<HeaderData> {
 fn parse_equation<'a>(input: &'a str, mut storage: EquationViewMut) -> Result<()> {
     let mut values = input
         .split_whitespace()
-        .map(|val| val.parse::<i32>().map_err(|_| NotANumber(val.to_string())));
+        .map(|val| val.parse::<i64>().map_err(|_| NotANumber(val.to_string())));
 
     let number_terms = values.next().ok_or(MissingValue("number of terms"))??;
 
