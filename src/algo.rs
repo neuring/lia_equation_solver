@@ -1,6 +1,7 @@
 use crate::{
     math,
-    system::{EquationStorage, System},
+    system::{Equation, EquationStorage, System},
+    util,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,11 +26,7 @@ pub fn solve_equation(system: &mut System) -> Result {
     while let Some(result) = find_smallest_non_zero_coefficient(system.get_storage())
     {
         if result.coefficient.abs() == 1 {
-            eliminate_equation(
-                system.get_storage_mut(),
-                result.equation_idx,
-                result.coefficient_idx,
-            );
+            eliminate_equation(system, result.equation_idx, result.coefficient_idx);
             eliminations += 1;
             println!(
                 "eliminated: {} (reductions inbetween: {}, estimate free space: {}, actual: {})",
@@ -44,15 +41,16 @@ pub fn solve_equation(system: &mut System) -> Result {
             );
             reductions_between_eliminations = 0;
             //println!("After elimination\n{}", system.equations_display());
-            if !preprocess(system.get_storage_mut()) {
-                return Result::Unsat;
-            };
         } else {
             assert!(result.coefficient != 0);
             reduce_coefficients(system, result.equation_idx, result.coefficient_idx);
             //println!("After reduce\n{}", system.equations_display());
             reductions_between_eliminations += 1;
         }
+        if !preprocess(system.get_storage_mut()) {
+            return Result::Unsat;
+        };
+        //println!("After simplification\n{}", system.equations_display());
     }
 
     if find_any_contradictions(system.get_storage()) {
@@ -118,25 +116,39 @@ fn find_smallest_non_zero_coefficient(
 }
 
 fn eliminate_equation(
-    system: &mut EquationStorage,
+    system: &mut System,
     eliminated_equation_idx: usize,
     eliminated_coefficient_idx: usize,
 ) {
+    let storage = &mut system.storage;
+    let varmap = &system.varmap;
     // TODO: copy in scratch_pad instead of allocating
     let eliminated_equation =
-        system.get_equation_mut(eliminated_equation_idx).to_owned();
+        storage.get_equation_mut(eliminated_equation_idx).to_owned();
 
     let eliminated_coefficient =
         eliminated_equation.get_coefficient(eliminated_coefficient_idx);
 
     let sign = if eliminated_coefficient > 0 { 1 } else { -1 };
 
-    for (equation_idx, mut equation) in system
+    for (equation_idx, mut equation) in storage
         .iter_equations_mut()
-        .filter(|eq| !eq.is_empty())
         .enumerate()
+        .filter(|(_, eq)| !eq.is_empty())
     {
         if equation_idx == eliminated_equation_idx {
+            // Add eliminated equation to reconstruction
+            let var = system.varmap[eliminated_coefficient_idx];
+            let terms = equation
+                .iter_coefficients()
+                .enumerate()
+                .filter(|(i, c)| **c != 0 && *i != eliminated_coefficient_idx)
+                .map(|(i, c)| (varmap[i], -sign * *c))
+                .collect();
+            system
+                .reconstruction
+                .add(var, terms, sign * *equation.get_result());
+
             equation.clear();
         } else {
             let target_coefficient_factor =
@@ -168,7 +180,7 @@ fn reduce_coefficients(
     let mut equation = storage.get_equation_mut(equation_idx);
 
     let mut coefficient = *equation.get_coefficient(coefficient_idx);
-    //println!("reducing coefficient {}", coefficient);
+    // println!("reducing coefficient {}", coefficient);
 
     let original_coefficient_idx = coefficient_idx;
 
@@ -207,16 +219,46 @@ fn reduce_coefficients(
                 if c_idx == coefficient_idx {
                     *coefficient = -m * coefficient_factor;
                 } else {
-                    *coefficient -= coefficient_factor * system.scratch_pad[c_idx];
+                    *coefficient += coefficient_factor * system.scratch_pad[c_idx];
                 }
             }
 
-            *equation.get_result() -= coefficient_factor * equation_sm;
+            *equation.get_result() += coefficient_factor * equation_sm;
         }
     }
 
+    let old_var = system.varmap[original_coefficient_idx];
     let new_var = system.new_variable();
     system.map_variable(original_coefficient_idx, new_var);
+
+    /*println!(
+        "{} = {}",
+        util::fmt_variable(old_var, system.storage.variables),
+        itertools::join(
+            system
+                .scratch_pad
+                .iter()
+                .enumerate()
+                .filter(|&(_, &c)| c != 0)
+                .map(|(i, c)| (system.varmap[i], *c))
+                .map(|(x, c)| format!(
+                    "{}{}",
+                    c,
+                    util::fmt_variable(x, system.storage.variables)
+                ))
+                .chain(std::iter::once(format!("{}", -equation_sm))),
+            " + "
+        )
+    );*/
+
+    let terms = system
+        .scratch_pad
+        .iter()
+        .enumerate()
+        .filter(|&(_, &c)| c != 0)
+        .map(|(i, c)| (system.varmap[i], *c))
+        .collect();
+    system.reconstruction.add(old_var, terms, -equation_sm);
 }
 
 fn find_any_contradictions(storage: &EquationStorage) -> bool {
