@@ -101,10 +101,10 @@ impl System {
 }
 
 pub struct EquationStorage {
-    variables: usize,
-    equations: usize,
+    pub variables: usize,
+    pub equations: usize,
 
-    data: Vec<i64>,
+    pub data: Vec<i64>,
 }
 
 impl fmt::Debug for EquationStorage {

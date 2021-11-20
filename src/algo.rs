@@ -9,13 +9,19 @@ pub enum Result {
     Unsat,
 }
 
+fn free_space(eliminated: usize, variables: usize, equations: usize) -> usize {
+    eliminated * (variables * 1) + (equations - eliminated) * eliminated
+}
+
 pub fn solve_equation(system: &mut System) -> Result {
     if !preprocess(system.get_storage_mut()) {
         return Result::Unsat;
     };
 
-    println!("After preprocessing\n{}", system.equations_display());
+    //println!("After preprocessing\n{}", system.equations_display());
 
+    let mut eliminations = 0;
+    let mut reductions_between_eliminations = 0;
     while let Some(result) = find_smallest_non_zero_coefficient(system.get_storage())
     {
         if result.coefficient.abs() == 1 {
@@ -24,11 +30,28 @@ pub fn solve_equation(system: &mut System) -> Result {
                 result.equation_idx,
                 result.coefficient_idx,
             );
-            println!("After elimination\n{}", system.equations_display());
+            eliminations += 1;
+            println!(
+                "eliminated: {} (reductions inbetween: {}, estimate free space: {}, actual: {})",
+                eliminations,
+                reductions_between_eliminations,
+                free_space(
+                    eliminations,
+                    system.storage.variables,
+                    system.storage.equations
+                ),
+                system.storage.data.iter().filter(|&&i| i == 0).count()
+            );
+            reductions_between_eliminations = 0;
+            //println!("After elimination\n{}", system.equations_display());
+            if !preprocess(system.get_storage_mut()) {
+                return Result::Unsat;
+            };
         } else {
             assert!(result.coefficient != 0);
             reduce_coefficients(system, result.equation_idx, result.coefficient_idx);
-            println!("After reduce\n{}", system.equations_display());
+            //println!("After reduce\n{}", system.equations_display());
+            reductions_between_eliminations += 1;
         }
     }
 
@@ -99,6 +122,7 @@ fn eliminate_equation(
     eliminated_equation_idx: usize,
     eliminated_coefficient_idx: usize,
 ) {
+    // TODO: copy in scratch_pad instead of allocating
     let eliminated_equation =
         system.get_equation_mut(eliminated_equation_idx).to_owned();
 
@@ -122,7 +146,7 @@ fn eliminate_equation(
                 .iter_coefficients()
                 .zip(eliminated_equation.iter_coefficients())
             {
-                *target_coefficient +=
+                *target_coefficient -=
                     sign * target_coefficient_factor * coefficient;
             }
 
@@ -144,7 +168,7 @@ fn reduce_coefficients(
     let mut equation = storage.get_equation_mut(equation_idx);
 
     let mut coefficient = *equation.get_coefficient(coefficient_idx);
-    println!("reducing coefficient {}", coefficient);
+    //println!("reducing coefficient {}", coefficient);
 
     let original_coefficient_idx = coefficient_idx;
 
@@ -183,12 +207,11 @@ fn reduce_coefficients(
                 if c_idx == coefficient_idx {
                     *coefficient = -m * coefficient_factor;
                 } else {
-                    *coefficient +=
-                        coefficient_factor * system.scratch_pad[c_idx];
+                    *coefficient -= coefficient_factor * system.scratch_pad[c_idx];
                 }
             }
 
-            *equation.get_result() += coefficient_factor * equation_sm;
+            *equation.get_result() -= coefficient_factor * equation_sm;
         }
     }
 
