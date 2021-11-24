@@ -19,7 +19,7 @@ pub fn solve_equation(system: &mut System) -> Result {
         return Result::Unsat;
     };
 
-    //println!("After preprocessing\n{}", system.equations_display());
+    println!("After preprocessing\n{}", system.equations_display());
 
     let mut eliminations = 0;
     let mut reductions_between_eliminations = 0;
@@ -40,17 +40,17 @@ pub fn solve_equation(system: &mut System) -> Result {
                 system.storage.data.iter().filter(|&&i| i == 0).count()
             );
             reductions_between_eliminations = 0;
-            //println!("After elimination\n{}", system.equations_display());
+            println!("After elimination\n{}", system.equations_display());
         } else {
             assert!(result.coefficient != 0);
             reduce_coefficients(system, result.equation_idx, result.coefficient_idx);
-            //println!("After reduce\n{}", system.equations_display());
+            println!("After reduce\n{}", system.equations_display());
             reductions_between_eliminations += 1;
         }
         if !preprocess(system.get_storage_mut()) {
             return Result::Unsat;
         };
-        //println!("After simplification\n{}", system.equations_display());
+        println!("After simplification\n{}", system.equations_display());
     }
 
     if find_any_contradictions(system.get_storage()) {

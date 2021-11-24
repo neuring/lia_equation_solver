@@ -7,6 +7,7 @@ use crate::util;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VariableIndex(pub usize);
 
+#[derive(Debug, Clone)]
 pub struct System {
     pub varmap: Vec<VariableIndex>,
     pub next_var_index: usize,
@@ -69,8 +70,29 @@ impl System {
 
         DisplayableEquations(self)
     }
+
+    /// Evaluates if the assignment is a solution to the system of equations.
+    /// `assignment` maps variable index to its assignment.
+    pub fn evaluate(&self, assignment: &[i64]) -> Result<(), EquationView> {
+        for equation in self.storage.iter_equations() {
+            let evaluate_result: i64 = self
+                .varmap
+                .iter()
+                .copied()
+                .zip(equation.iter_coefficients())
+                .map(|(variable_idx, coeff)| assignment[variable_idx.0] * coeff)
+                .sum();
+
+            if evaluate_result != equation.get_result() {
+                return Err(equation);
+            }
+        }
+
+        Ok(())
+    }
 }
 
+#[derive(Clone)]
 pub struct EquationStorage {
     pub variables: usize,
     pub equations: usize,
@@ -207,42 +229,43 @@ impl<'a> EquationView<'a> {
         self.data.iter().all(|&x| x == 0)
     }
 
-    pub fn equation_display(&self, varmap: &'a Vec<VariableIndex>) -> impl fmt::Display + 'a {
-        struct EquationDisplay<'a>{
-            equation: EquationView<'a>, 
-            varmap: &'a Vec<VariableIndex>
+    pub fn equation_display(
+        &self,
+        varmap: &'a Vec<VariableIndex>,
+    ) -> impl fmt::Display + 'a {
+        struct EquationDisplay<'a> {
+            equation: EquationView<'a>,
+            varmap: &'a Vec<VariableIndex>,
         }
 
         impl<'a> fmt::Display for EquationDisplay<'a> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    let mut terms: Vec<_> = self.equation
-                        .iter_coefficients()
-                        .enumerate()
-                        .filter(|&(_, coef)| coef != 0)
-                        .map(|(idx, coef)| (coef, self.varmap[idx]))
-                        .collect();
+                let mut terms: Vec<_> = self
+                    .equation
+                    .iter_coefficients()
+                    .enumerate()
+                    .filter(|&(_, coef)| coef != 0)
+                    .map(|(idx, coef)| (coef, self.varmap[idx]))
+                    .collect();
 
-                    terms.sort_by_key(|(_, i)| i.0);
+                terms.sort_by_key(|(_, i)| i.0);
 
-                    let equation_lhs = if terms.is_empty() {
-                        "0".to_owned()
-                    } else {
-                        itertools::join(
-                            terms.iter().map(|&(coef, idx)| {
-                                format!(
-                                    "{}{}",
-                                    coef,
-                                    util::fmt_variable(
-                                        idx,
-                                        self.varmap.len()
-                                    ),
-                                )
-                            }),
-                            " + ",
-                        )
-                    };
+                let equation_lhs = if terms.is_empty() {
+                    "0".to_owned()
+                } else {
+                    itertools::join(
+                        terms.iter().map(|&(coef, idx)| {
+                            format!(
+                                "{}{}",
+                                coef,
+                                util::fmt_variable(idx, self.varmap.len()),
+                            )
+                        }),
+                        " + ",
+                    )
+                };
 
-                    write!(f, "{} = {}", equation_lhs, self.equation.get_result())
+                write!(f, "{} = {}", equation_lhs, self.equation.get_result())
             }
         }
 
@@ -287,10 +310,11 @@ impl<'a> EquationViewMut<'a> {
         self.data.iter().all(|&x| x == 0)
     }
 
-    pub fn display(&'a self, varmap: &'a Vec<VariableIndex>) -> impl fmt::Display + 'a {
-        EquationView {
-            data: &self.data,
-        }.equation_display(varmap)
+    pub fn display(
+        &'a self,
+        varmap: &'a Vec<VariableIndex>,
+    ) -> impl fmt::Display + 'a {
+        EquationView { data: &self.data }.equation_display(varmap)
     }
 }
 
@@ -323,14 +347,15 @@ impl Equation {
         self.data.iter().skip(1).copied()
     }
 
-    pub fn display<'a>(&'a self, varmap: &'a Vec<VariableIndex>) -> impl fmt::Display + '_ {
-        EquationView {
-            data: &self.data,
-        }.equation_display(varmap)
+    pub fn display<'a>(
+        &'a self,
+        varmap: &'a Vec<VariableIndex>,
+    ) -> impl fmt::Display + '_ {
+        EquationView { data: &self.data }.equation_display(varmap)
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Reconstruction {
     tree: HashMap<VariableIndex, ReconstructedEquation>,
 }
@@ -354,17 +379,23 @@ impl Reconstruction {
             .insert(var, ReconstructedEquation { constant, terms });
     }
 
-    pub fn dump_dot(&self, total_variables: usize, mut w: impl std::io::Write) -> Result<(), impl std::error::Error> {
+    pub fn dump_dot(
+        &self,
+        total_variables: usize,
+        mut w: impl std::io::Write,
+    ) -> Result<(), impl std::error::Error> {
         writeln!(w, "digraph {{")?;
 
         for (var, def) in self.tree.iter() {
             let fmt_var = util::fmt_variable(*var, total_variables);
-            writeln!(w,
+            writeln!(
+                w,
                 "{} [label=\"{}: {}\" ordering=\"out\"];",
                 fmt_var, fmt_var, def.constant,
             )?;
             for (child_var, coef) in &def.terms {
-                writeln!(w,
+                writeln!(
+                    w,
                     "{} -> {} [label={}];",
                     fmt_var,
                     util::fmt_variable(*child_var, total_variables),
@@ -373,7 +404,7 @@ impl Reconstruction {
             }
         }
 
-       writeln!(w, "}}")
+        writeln!(w, "}}")
     }
 
     pub fn evaluate_with_zeroes(&self, total_variables: usize) -> Vec<Option<i64>> {
@@ -391,7 +422,9 @@ impl Reconstruction {
         current: VariableIndex,
         visited: &mut Vec<Option<i64>>,
     ) {
-        if visited[current.0].is_some() { return; }
+        if visited[current.0].is_some() {
+            return;
+        }
 
         let def = self.tree.get(&current);
 
@@ -413,7 +446,7 @@ impl Reconstruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct ReconstructedEquation {
     constant: i64,
     terms: Vec<(VariableIndex, i64)>,
