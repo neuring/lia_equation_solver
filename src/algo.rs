@@ -1,8 +1,7 @@
 use crate::{
     math,
     numeric::Numeric,
-    system::{Equation, EquationStorage, System},
-    util,
+    system::{EquationStorage, System},
 };
 
 struct ScratchData<N> {
@@ -48,12 +47,9 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
     let mut eliminations = 0;
     let mut reductions_between_eliminations = 0;
 
-    while let Some(result) = find_smallest_non_zero_coefficient(
-        &system.storage,
-        &mut scratch.scratch1,
-        &mut scratch.scratch2,
-        &mut scratch.scratch3,
-    ) {
+    while let Some(result) =
+        find_smallest_non_zero_coefficient(&system.storage, &mut scratch.scratch1)
+    {
         if result.coefficient == &1 || result.coefficient == &-1 {
             eliminate_equation(
                 system,
@@ -140,14 +136,9 @@ struct SearchResult<'a, N> {
 fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
     system: &EquationStorage<N>,
     scratch1: &'a mut N,
-    scratch2: &mut N,
-    scratch3: &mut N,
 ) -> Option<SearchResult<'a, N>> {
-    let mut coefficient_abs = scratch2;
-
     let mut found_min = false;
 
-    let current_min_abs = scratch3;
     let current_min = scratch1;
     let mut current_coefficient_idx = 0;
     let mut current_equation_idx = 0;
@@ -156,14 +147,11 @@ fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
         for (coefficient_idx, coefficient) in
             equation.iter_coefficients().enumerate()
         {
-            coefficient_abs.abs_assign(coefficient);
-
-            let is_new_minimum = &*coefficient_abs > &0
-                && (!found_min || coefficient_abs < current_min_abs);
+            let is_new_minimum = coefficient != &0
+                && (!found_min || coefficient.abs_compare(&current_min).is_lt());
 
             if is_new_minimum {
                 found_min = true;
-                current_min_abs.clone_from(&coefficient_abs);
                 current_min.clone_from(&coefficient);
                 current_coefficient_idx = coefficient_idx;
                 current_equation_idx = equation_idx;

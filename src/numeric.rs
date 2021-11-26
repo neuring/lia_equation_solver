@@ -1,6 +1,6 @@
 use std::{
-    fmt::{Display, Debug},
-    ops::{AddAssign, MulAssign, RemAssign, DivAssign, SubAssign},
+    fmt::{Debug, Display},
+    ops::{AddAssign, DivAssign, MulAssign, RemAssign, SubAssign},
 };
 
 pub trait Numeric:
@@ -33,8 +33,7 @@ pub trait Numeric:
 
     fn assign(&mut self, value: i64);
 
-    /// self <- |value|
-    fn abs_assign(&mut self, value: &Self);
+    fn abs_compare(&self, value: &Self) -> std::cmp::Ordering;
 }
 
 impl Numeric for rug::Integer {
@@ -50,8 +49,8 @@ impl Numeric for rug::Integer {
         <Self as rug::Assign<i64>>::assign(self, value);
     }
 
-    fn abs_assign(&mut self, value: &Self) {
-        <Self as rug::Assign<_>>::assign(self, value.abs_ref()); 
+    fn abs_compare(&self, value: &Self) -> std::cmp::Ordering {
+        self.cmp_abs(value)
     }
 }
 
@@ -68,7 +67,7 @@ impl Numeric for i64 {
         *self = value;
     }
 
-    fn abs_assign(&mut self, value: &Self) {
-        *self = value.abs();
+    fn abs_compare(&self, value: &Self) -> std::cmp::Ordering {
+        self.abs().cmp(&value.abs())
     }
 }
