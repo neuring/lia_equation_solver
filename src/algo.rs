@@ -110,7 +110,7 @@ fn preprocess<N: Numeric>(
         rem.clone_from(equation.get_result());
         *rem %= &*gcd;
 
-        if rem != &0 {
+        if rem.cmp_zero().is_ne() {
             return false;
         }
 
@@ -154,7 +154,7 @@ fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
                 one_coef_counter += 1;
             }
 
-            let is_new_minimum = coefficient != &0
+            let is_new_minimum = coefficient.cmp_zero().is_ne()
                 && (!found_min || coefficient.abs_compare(&current_min).is_lt());
 
             if is_new_minimum {
@@ -195,7 +195,11 @@ fn eliminate_equation<N: Numeric>(
     let eliminated_coefficient =
         eliminated_equation.get_coefficient(eliminated_coefficient_idx);
 
-    let sign = if eliminated_coefficient > &0 { 1 } else { -1 };
+    let sign = if eliminated_coefficient.cmp_zero().is_gt() {
+        1
+    } else {
+        -1
+    };
 
     for (equation_idx, mut equation) in storage
         .iter_equations_mut()
@@ -271,7 +275,7 @@ fn reduce_coefficients<N: Numeric>(
 
     let original_coefficient_idx = coefficient_idx;
 
-    if &*coefficient < &0 {
+    if coefficient.cmp_zero().is_lt() {
         equation.iter_coefficients().for_each(|c| *c *= -1);
         *equation.get_result() *= -1;
         *coefficient *= -1;
@@ -372,7 +376,7 @@ fn reduce_coefficients<N: Numeric>(
         .iter()
         .take(system.storage.variables)
         .enumerate()
-        .filter(|(_, c)| *c != &0)
+        .filter(|(_, c)| c.cmp_zero().is_ne())
         .map(|(i, c)| (system.varmap[i], c.clone()))
         .collect();
     let mut constant = equation_sm.clone();

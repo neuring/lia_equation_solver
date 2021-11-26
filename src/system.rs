@@ -124,7 +124,7 @@ impl<N: Numeric> System<N> {
             let eq_data = &data[src_eq_start..src_eq_start + old_equation_size];
 
             // Is src equation empty? -> continue
-            if eq_data.iter().all(|i| i == &0) {
+            if eq_data.iter().all(|i| i.cmp_zero().is_eq()) {
                 empty_equations += 1;
                 continue;
             }
@@ -310,7 +310,7 @@ impl<'a, N: Clone> EquationView<'a, N> {
 
 impl<'a, N: Numeric> EquationView<'a, N> {
     pub fn is_empty(&self) -> bool {
-        self.data.iter().all(|x| x == &0)
+        self.data.iter().all(|x| x.cmp_zero().is_eq())
     }
 
     pub fn equation_display(
@@ -328,7 +328,7 @@ impl<'a, N: Numeric> EquationView<'a, N> {
                     .equation
                     .iter_coefficients()
                     .enumerate()
-                    .filter(|&(_, coef)| coef != &0)
+                    .filter(|&(_, coef)| coef.cmp_zero().is_ne())
                     .map(|(idx, coef)| (coef, self.varmap[idx]))
                     .collect();
 
@@ -391,7 +391,7 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data.iter().all(|x| x == &0)
+        self.data.iter().all(|x| x.cmp_zero().is_eq())
     }
 
     #[allow(unused)]

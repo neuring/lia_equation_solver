@@ -34,6 +34,8 @@ pub trait Numeric:
     fn assign(&mut self, value: i64);
 
     fn abs_compare(&self, value: &Self) -> std::cmp::Ordering;
+
+    fn cmp_zero(&self) -> std::cmp::Ordering;
 }
 
 impl Numeric for rug::Integer {
@@ -52,6 +54,10 @@ impl Numeric for rug::Integer {
     fn abs_compare(&self, value: &Self) -> std::cmp::Ordering {
         self.cmp_abs(value)
     }
+
+    fn cmp_zero(&self) -> std::cmp::Ordering {
+        self.cmp0()
+    }
 }
 
 impl Numeric for i64 {
@@ -69,5 +75,9 @@ impl Numeric for i64 {
 
     fn abs_compare(&self, value: &Self) -> std::cmp::Ordering {
         self.abs().cmp(&value.abs())
+    }
+
+    fn cmp_zero(&self) -> std::cmp::Ordering {
+        self.cmp(&0)
     }
 }
