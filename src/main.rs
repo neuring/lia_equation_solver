@@ -45,7 +45,7 @@ fn main() -> anyhow::Result<()> {
             .evaluate_with_zeroes(system.next_var_index, &mut N::from(0));
 
         for (i, res) in result.iter().cloned().enumerate() {
-            if i >= system.storage.variables {
+            if i >= system.starting_variables {
                 break;
             }
             if let Some(res) = res {
@@ -82,5 +82,9 @@ fn main() -> anyhow::Result<()> {
             .dump_dot(system.storage.variables, f)?;
     }
 
-    Ok(())
+    if result == algo::Result::Sat {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(""))
+    }
 }

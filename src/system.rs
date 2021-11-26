@@ -10,7 +10,14 @@ pub struct VariableIndex(pub usize);
 #[derive(Debug, Clone)]
 pub struct System<N> {
     pub varmap: Vec<VariableIndex>,
+
+    pub alive_terms: Vec<bool>,
+
+    pub killed_variables: usize,
+
     pub next_var_index: usize,
+
+    pub starting_variables: usize,
 
     pub reconstruction: Reconstruction<N>,
 
@@ -22,6 +29,11 @@ impl<N: Numeric> System<N> {
         Self {
             varmap: (0..variables).map(|i| VariableIndex(i)).collect(),
             next_var_index: variables,
+
+            alive_terms: vec![true; variables],
+            killed_variables: 0,
+
+            starting_variables: variables,
 
             reconstruction: Reconstruction::new(),
 
@@ -37,6 +49,11 @@ impl<N: Numeric> System<N> {
 
     pub fn map_variable(&mut self, term_idx: usize, variable_idx: VariableIndex) {
         self.varmap[term_idx] = variable_idx;
+    }
+
+    pub fn kill_variable(&mut self, term_idx: usize) {
+        self.killed_variables += 1;
+        self.alive_terms[term_idx] = false;
     }
 
     pub fn add_equation(&mut self) -> EquationViewMut<'_, N> {
@@ -87,6 +104,63 @@ impl<N: Numeric> System<N> {
         }
 
         Ok(())
+    }
+
+    pub fn resize(&mut self) {
+        let new_variables = self.starting_variables - self.killed_variables;
+        let new_equation_size = new_variables + 1;
+
+        let old_equation_size = self.storage.get_equation_size();
+
+        let data = &mut self.storage.data;
+
+        let equations = self.storage.equations;
+
+        let mut empty_equations = 0;
+
+        let mut dst_eq_idx = 0;
+        for src_eq_idx in 0..equations {
+            let src_eq_start = src_eq_idx * old_equation_size;
+            let eq_data = &data[src_eq_start..src_eq_start + old_equation_size];
+
+            // Is src equation empty? -> continue
+            if eq_data.iter().all(|i| i == &0) {
+                empty_equations += 1;
+                continue;
+            }
+
+            // swap elements of src equation with smaller dst equation
+            let dst_eq_start = dst_eq_idx * new_equation_size;
+
+            // swap equation result values
+            data.swap(dst_eq_start, src_eq_start);
+
+            // swap equation coefficients
+            let mut dst_i = 1;
+            for src_i in 1..old_equation_size {
+                // in data, coefficients start at one, in varmap and alive_terms at zero
+                if self.alive_terms[src_i - 1] {
+                    data.swap(dst_eq_start + dst_i, src_eq_start + src_i);
+                    dst_i += 1;
+                }
+            }
+            assert_eq!(dst_i, new_equation_size);
+
+            dst_eq_idx += 1;
+        }
+
+        // resize varmap and alive_terms for new smaller number of active variables
+        assert_eq!(self.varmap.len(), self.alive_terms.len());
+
+        let mut alive = self.alive_terms.iter().copied();
+        self.varmap.retain(|_| alive.next().unwrap());
+        self.alive_terms.resize(self.varmap.len(), true);
+        self.alive_terms.fill(true);
+
+        assert_eq!(self.alive_terms.len(), new_variables);
+
+        self.storage.equations -= empty_equations;
+        self.storage.variables = new_variables;
     }
 }
 
@@ -147,6 +221,15 @@ impl<N> EquationStorage<N> {
         return self.variables;
     }
 
+    pub fn get_equation(&self, idx: usize) -> EquationView<'_, N> {
+        assert!(idx < self.get_equations());
+
+        let start = self.get_equation_size() * idx;
+        let data = &self.data[start..start + self.get_equation_size()];
+
+        EquationView { data }
+    }
+
     pub fn get_equation_mut(&mut self, idx: usize) -> EquationViewMut<'_, N> {
         assert!(idx < self.get_equations());
 
@@ -166,6 +249,7 @@ impl<N> EquationStorage<N> {
     pub fn iter_equations(&self) -> impl Iterator<Item = EquationView<'_, N>> + '_ {
         self.data
             .chunks_exact(self.get_equation_size())
+            .take(self.equations)
             .map(|equation_data| EquationView {
                 data: equation_data,
             })
@@ -316,6 +400,16 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
         varmap: &'a Vec<VariableIndex>,
     ) -> impl fmt::Display + 'a {
         EquationView { data: &self.data }.equation_display(varmap)
+    }
+
+    pub fn copy_into(&mut self, other: EquationView<'_, N>) {
+        for (s, o) in self.data.iter_mut().zip(other.data.iter()) {
+            s.clone_from(o);
+        }
+    }
+
+    pub fn into_ref(self) -> EquationView<'a, N> {
+        EquationView { data: &*self.data }
     }
 }
 

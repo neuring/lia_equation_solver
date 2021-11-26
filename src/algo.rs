@@ -1,7 +1,7 @@
 use crate::{
     math,
     numeric::Numeric,
-    system::{EquationStorage, System},
+    system::{EquationStorage, EquationViewMut, System},
 };
 
 struct ScratchData<N> {
@@ -16,7 +16,7 @@ struct ScratchData<N> {
 impl<N: Numeric> ScratchData<N> {
     pub fn new(variables: usize) -> Self {
         Self {
-            scratch_pad: vec![N::from(0); variables],
+            scratch_pad: vec![N::from(0); variables + 1],
             scratch1: N::from(0),
             scratch2: N::from(0),
             scratch3: N::from(0),
@@ -31,10 +31,6 @@ pub enum Result {
     Unsat,
 }
 
-fn free_space(eliminated: usize, variables: usize, equations: usize) -> usize {
-    eliminated * (variables * 1) + (equations - eliminated) * eliminated
-}
-
 pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
     let mut scratch = ScratchData::new(system.storage.variables);
 
@@ -44,8 +40,8 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
 
     //println!("After preprocessing\n{}", system.equations_display());
 
-    let mut eliminations = 0;
     let mut reductions_between_eliminations = 0;
+    let mut eliminates_since_last_resize = 0;
 
     while let Some(result) =
         find_smallest_non_zero_coefficient(&system.storage, &mut scratch.scratch1)
@@ -57,19 +53,24 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
                 result.coefficient_idx,
                 &mut scratch,
             );
-            eliminations += 1;
             println!(
-                "eliminated: {} (reductions inbetween: {}, estimate free space: {})",
-                eliminations,
-                reductions_between_eliminations,
-                free_space(
-                    eliminations,
-                    system.storage.variables,
-                    system.storage.equations
-                ),
+                "eliminated: {} (reductions inbetween: {})",
+                system.killed_variables, reductions_between_eliminations,
             );
             reductions_between_eliminations = 0;
             //println!("After elimination\n{}", system.equations_display());
+            eliminates_since_last_resize += 1;
+
+            if eliminates_since_last_resize > 20 && system.storage.variables > 4 {
+                //println!("resizing...");
+                //dbg!(&system.alive_terms);
+                //dbg!(&system.varmap);
+                //dbg!(&system.storage);
+                system.resize();
+                eliminates_since_last_resize = 0;
+                //dbg!(&system.varmap);
+                //dbg!(&system.storage);
+            }
         } else {
             assert_ne!(result.coefficient, &0);
             reduce_coefficients(
@@ -143,10 +144,16 @@ fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
     let mut current_coefficient_idx = 0;
     let mut current_equation_idx = 0;
 
+    let mut one_coef_counter = 0;
+
     for (equation_idx, equation) in system.iter_equations().enumerate() {
         for (coefficient_idx, coefficient) in
             equation.iter_coefficients().enumerate()
         {
+            if coefficient == &1 || coefficient == &-1 {
+                one_coef_counter += 1;
+            }
+
             let is_new_minimum = coefficient != &0
                 && (!found_min || coefficient.abs_compare(&current_min).is_lt());
 
@@ -158,6 +165,10 @@ fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
             }
         }
     }
+
+    //if one_coef_counter > 1 {
+    //    println!("Had elimination choice {}", one_coef_counter);
+    //}
 
     found_min.then(move || SearchResult {
         equation_idx: current_equation_idx,
@@ -174,9 +185,12 @@ fn eliminate_equation<N: Numeric>(
 ) {
     let storage = &mut system.storage;
     let varmap = &system.varmap;
-    // TODO: copy in scratch_pad instead of allocating
-    let eliminated_equation =
-        storage.get_equation_mut(eliminated_equation_idx).to_owned();
+
+    let mut eliminated_equation = EquationViewMut {
+        data: &mut scratch.scratch_pad,
+    };
+    eliminated_equation.copy_into(storage.get_equation(eliminated_equation_idx));
+    let eliminated_equation = eliminated_equation.into_ref();
 
     let eliminated_coefficient =
         eliminated_equation.get_coefficient(eliminated_coefficient_idx);
@@ -236,6 +250,8 @@ fn eliminate_equation<N: Numeric>(
             *equation.get_result() -= &*s;
         }
     }
+
+    system.kill_variable(eliminated_coefficient_idx);
 }
 
 fn reduce_coefficients<N: Numeric>(
@@ -294,7 +310,11 @@ fn reduce_coefficients<N: Numeric>(
 
     let equation_sm = sm;
 
-    for (e_idx, mut equation) in storage.iter_equations_mut().enumerate() {
+    for (e_idx, mut equation) in storage
+        .iter_equations_mut()
+        .enumerate()
+        .filter(|(_, eq)| !eq.is_empty())
+    {
         if equation_idx != e_idx {
             let coefficient_factor = &mut scratch.scratch4;
             coefficient_factor.clone_from(equation.get_coefficient(coefficient_idx));
@@ -350,6 +370,7 @@ fn reduce_coefficients<N: Numeric>(
     let terms = scratch
         .scratch_pad
         .iter()
+        .take(system.storage.variables)
         .enumerate()
         .filter(|(_, c)| *c != &0)
         .map(|(i, c)| (system.varmap[i], c.clone()))
