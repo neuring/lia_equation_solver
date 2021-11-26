@@ -16,7 +16,7 @@ pub fn special_mod<N: Numeric>(result: &mut N, rounded_div: &mut N, a: &N, b: &N
 
     result.clone_from(rounded_div);
     *result *= b;
-    *result *= -1;
+    result.negate();
     *result += a;
 }
 

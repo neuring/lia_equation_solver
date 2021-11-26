@@ -3,6 +3,8 @@ use std::{
     ops::{AddAssign, DivAssign, MulAssign, RemAssign, SubAssign},
 };
 
+use rug::ops::NegAssign;
+
 pub trait Numeric:
     Display
     + Debug
@@ -36,6 +38,8 @@ pub trait Numeric:
     fn abs_compare(&self, value: &Self) -> std::cmp::Ordering;
 
     fn cmp_zero(&self) -> std::cmp::Ordering;
+
+    fn negate(&mut self);
 }
 
 impl Numeric for rug::Integer {
@@ -58,6 +62,10 @@ impl Numeric for rug::Integer {
     fn cmp_zero(&self) -> std::cmp::Ordering {
         self.cmp0()
     }
+
+    fn negate(&mut self) {
+        self.neg_assign();
+    }
 }
 
 impl Numeric for i64 {
@@ -79,5 +87,9 @@ impl Numeric for i64 {
 
     fn cmp_zero(&self) -> std::cmp::Ordering {
         self.cmp(&0)
+    }
+
+    fn negate(&mut self) {
+        *self *= -1;
     }
 }

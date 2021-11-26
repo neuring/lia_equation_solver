@@ -276,9 +276,9 @@ fn reduce_coefficients<N: Numeric>(
     let original_coefficient_idx = coefficient_idx;
 
     if coefficient.cmp_zero().is_lt() {
-        equation.iter_coefficients().for_each(|c| *c *= -1);
-        *equation.get_result() *= -1;
-        *coefficient *= -1;
+        equation.iter_coefficients().for_each(|c| c.negate());
+        equation.get_result().negate();
+        coefficient.negate();
     }
 
     let m = &mut scratch.scratch1;
@@ -287,11 +287,11 @@ fn reduce_coefficients<N: Numeric>(
 
     for (coefficient_idx, coefficient) in equation.iter_coefficients().enumerate() {
         if coefficient_idx == original_coefficient_idx {
-            *coefficient *= -1;
+            coefficient.negate();
 
             let minus_m = &mut scratch.scratch2;
             minus_m.clone_from(m);
-            *minus_m *= -1;
+            minus_m.negate();
             scratch.scratch_pad[coefficient_idx].clone_from(&*minus_m);
         } else {
             let rounded_div = &mut scratch.scratch2;
@@ -326,7 +326,7 @@ fn reduce_coefficients<N: Numeric>(
             for (c_idx, coefficient) in equation.iter_coefficients().enumerate() {
                 if c_idx == coefficient_idx {
                     coefficient.clone_from(&*m);
-                    *coefficient *= -1;
+                    coefficient.negate();
                     *coefficient *= &*coefficient_factor;
                 } else {
                     let summand = &mut scratch.scratch2;
@@ -380,7 +380,7 @@ fn reduce_coefficients<N: Numeric>(
         .map(|(i, c)| (system.varmap[i], c.clone()))
         .collect();
     let mut constant = equation_sm.clone();
-    constant *= -1;
+    constant.negate();
     system.reconstruction.add(old_var, terms, constant);
 }
 
