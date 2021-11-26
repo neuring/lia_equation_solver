@@ -2,7 +2,10 @@ use std::{convert::TryInto, ops::Not};
 
 use thiserror::Error;
 
-use crate::system::{EquationViewMut, System};
+use crate::{
+    numeric::Numeric,
+    system::{EquationViewMut, System},
+};
 
 #[derive(Debug, Error)]
 pub enum ParseError {
@@ -22,7 +25,7 @@ pub enum ParseError {
     TrailingZeroNotZero(i64),
 
     #[error("Index {0} is invalid")]
-    InvalidIndex(i64)
+    InvalidIndex(i64),
 }
 
 use ParseError::*;
@@ -55,7 +58,10 @@ fn parse_header(header: &str) -> Result<HeaderData> {
     })
 }
 
-fn parse_equation<'a>(input: &'a str, mut storage: EquationViewMut) -> Result<()> {
+fn parse_equation<'a, N: Numeric>(
+    input: &'a str,
+    mut storage: EquationViewMut<'_, N>,
+) -> Result<()> {
     let mut values = input
         .split_whitespace()
         .map(|val| val.parse::<i64>().map_err(|_| NotANumber(val.to_string())));
@@ -69,7 +75,7 @@ fn parse_equation<'a>(input: &'a str, mut storage: EquationViewMut) -> Result<()
         let index: usize = index.try_into().map_err(|_| InvalidIndex(index))?;
 
         if 0 < index && index < storage.get_coefficient_slice().len() + 1 {
-            *storage.get_coefficient(index - 1) = coefficient;
+            *storage.get_coefficient(index - 1) = N::from(coefficient);
         } else {
             return Err(IndexTooLarge(index));
         }
@@ -77,7 +83,7 @@ fn parse_equation<'a>(input: &'a str, mut storage: EquationViewMut) -> Result<()
 
     let equation_result = values.next().ok_or(MissingValue("equation result"))??;
 
-    *storage.get_result() = equation_result;
+    *storage.get_result() = N::from(equation_result);
 
     let expected_zero = values.next().ok_or(MissingValue("trailing zero"))??;
 
@@ -91,11 +97,12 @@ fn parse_equation<'a>(input: &'a str, mut storage: EquationViewMut) -> Result<()
 fn is_empty_line(line: &str) -> Option<&str> {
     let line = line.trim();
 
-    (line.is_empty() || line.starts_with("#")).not().then(|| line)
+    (line.is_empty() || line.starts_with("#"))
+        .not()
+        .then(|| line)
 }
 
-pub fn parse(input: &str) -> Result<System> {
-
+pub fn parse<N: Numeric>(input: &str) -> Result<System<N>> {
     let mut lines = input.lines().filter_map(is_empty_line);
 
     let header = parse_header(lines.next().ok_or(UnexpectedEndOfInput)?)?;
@@ -105,10 +112,7 @@ pub fn parse(input: &str) -> Result<System> {
     for _ in 0..header.equations {
         let equation_buffer = system.add_equation();
 
-        parse_equation(
-            lines.next().ok_or(UnexpectedEndOfInput)?,
-            equation_buffer,
-        )?;
+        parse_equation(lines.next().ok_or(UnexpectedEndOfInput)?, equation_buffer)?;
     }
 
     Ok(system)

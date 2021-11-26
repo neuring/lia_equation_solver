@@ -14,7 +14,7 @@ fn free_space(eliminated: usize, variables: usize, equations: usize) -> usize {
     eliminated * (variables * 1) + (equations - eliminated) * eliminated
 }
 
-pub fn solve_equation(system: &mut System) -> Result {
+pub fn solve_equation(system: &mut System<i64>) -> Result {
     if !preprocess(system.get_storage_mut()) {
         return Result::Unsat;
     };
@@ -60,7 +60,7 @@ pub fn solve_equation(system: &mut System) -> Result {
     }
 }
 
-fn preprocess(system: &mut EquationStorage) -> bool {
+fn preprocess(system: &mut EquationStorage<i64>) -> bool {
     for mut equation in system.iter_equations_mut().filter(|eq| !eq.is_empty()) {
         let mut gcd = 0;
         math::gcd(&mut gcd, equation.get_coefficient_slice());
@@ -90,12 +90,12 @@ struct SearchResult {
 }
 
 fn find_smallest_non_zero_coefficient(
-    system: &EquationStorage,
+    system: &EquationStorage<i64>,
 ) -> Option<SearchResult> {
     let mut min: Option<SearchResult> = None;
 
     for (equation_idx, equation) in system.iter_equations().enumerate() {
-        for (coefficient_idx, coefficient) in
+        for (coefficient_idx, &coefficient) in
             equation.iter_coefficients().enumerate()
         {
             let new_minimum = coefficient.abs() > 0
@@ -117,7 +117,7 @@ fn find_smallest_non_zero_coefficient(
 }
 
 fn eliminate_equation(
-    system: &mut System,
+    system: &mut System<i64>,
     eliminated_equation_idx: usize,
     eliminated_coefficient_idx: usize,
 ) {
@@ -128,7 +128,7 @@ fn eliminate_equation(
         storage.get_equation_mut(eliminated_equation_idx).to_owned();
 
     let eliminated_coefficient =
-        eliminated_equation.get_coefficient(eliminated_coefficient_idx);
+        *eliminated_equation.get_coefficient(eliminated_coefficient_idx);
 
     let sign = if eliminated_coefficient > 0 { 1 } else { -1 };
 
@@ -172,7 +172,7 @@ fn eliminate_equation(
 }
 
 fn reduce_coefficients(
-    system: &mut System,
+    system: &mut System<i64>,
     equation_idx: usize,
     coefficient_idx: usize,
 ) {
@@ -267,6 +267,6 @@ fn reduce_coefficients(
     system.reconstruction.add(old_var, terms, -equation_sm);
 }
 
-fn find_any_contradictions(storage: &EquationStorage) -> bool {
+fn find_any_contradictions(storage: &EquationStorage<i64>) -> bool {
     storage.iter_equations().any(|eq| !eq.is_empty())
 }

@@ -22,7 +22,8 @@ pub fn special_mod<N: Numeric>(
     *result += a;
 }
 
-/// calculates ⌊a / b + 1/2 ⌋
+/// calculates ⌊a / b + 1/2 ⌋, but without using floats
+/// ⌊a / b + 1/2 ⌋ = ⌊(a + 2 * b) / (2 * b)⌋
 pub fn rounded_divisor<N: Numeric>(
     result: &mut N,
     a: &N,

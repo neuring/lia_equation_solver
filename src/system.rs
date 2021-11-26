@@ -2,29 +2,29 @@ use std::{collections::HashMap, fmt};
 
 use itertools;
 
-use crate::util;
+use crate::{numeric::Numeric, util};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct VariableIndex(pub usize);
 
 #[derive(Debug, Clone)]
-pub struct System {
+pub struct System<N> {
     pub varmap: Vec<VariableIndex>,
     pub next_var_index: usize,
 
     pub reconstruction: Reconstruction,
 
-    pub scratch_pad: Vec<i64>,
+    pub scratch_pad: Vec<N>,
 
-    pub storage: EquationStorage,
+    pub storage: EquationStorage<N>,
 }
 
-impl System {
+impl<N: Numeric> System<N> {
     pub fn new(variables: usize) -> Self {
         Self {
             varmap: (0..variables).map(|i| VariableIndex(i)).collect(),
             next_var_index: variables,
-            scratch_pad: vec![0; variables],
+            scratch_pad: vec![N::from(0); variables],
 
             reconstruction: Reconstruction::new(),
 
@@ -42,22 +42,22 @@ impl System {
         self.varmap[term_idx] = variable_idx;
     }
 
-    pub fn add_equation(&mut self) -> EquationViewMut {
+    pub fn add_equation(&mut self) -> EquationViewMut<'_, N> {
         self.storage.add_equation()
     }
 
-    pub fn get_storage(&self) -> &EquationStorage {
+    pub fn get_storage(&self) -> &EquationStorage<N> {
         &self.storage
     }
 
-    pub fn get_storage_mut(&mut self) -> &mut EquationStorage {
+    pub fn get_storage_mut(&mut self) -> &mut EquationStorage<N> {
         &mut self.storage
     }
 
     pub fn equations_display(&self) -> impl fmt::Display + '_ {
-        struct DisplayableEquations<'a>(&'a System);
+        struct DisplayableEquations<'a, N>(&'a System<N>);
 
-        impl<'a> fmt::Display for DisplayableEquations<'a> {
+        impl<'a, N: Numeric> fmt::Display for DisplayableEquations<'a, N> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 for equation in
                     self.0.storage.iter_equations().filter(|eq| !eq.is_empty())
@@ -73,17 +73,23 @@ impl System {
 
     /// Evaluates if the assignment is a solution to the system of equations.
     /// `assignment` maps variable index to its assignment.
-    pub fn evaluate(&self, assignment: &[i64]) -> Result<(), EquationView> {
+    pub fn evaluate(&self, assignment: &[N]) -> Result<(), EquationView<'_, N>> {
         for equation in self.storage.iter_equations() {
-            let evaluate_result: i64 = self
+            //.map(|(variable_idx, coeff)| assignment[variable_idx.0] * coeff)
+            let mut scratch = N::from(0);
+            let mut sum = N::from(0);
+            self
                 .varmap
                 .iter()
                 .copied()
                 .zip(equation.iter_coefficients())
-                .map(|(variable_idx, coeff)| assignment[variable_idx.0] * coeff)
-                .sum();
+                .for_each(|(variable_idx, coeff)| {
+                    scratch.clone_from(&assignment[variable_idx.0]);
+                    scratch *= coeff;
+                    sum += &scratch;
+                });
 
-            if evaluate_result != equation.get_result() {
+            if &sum != equation.get_result() {
                 return Err(equation);
             }
         }
@@ -93,14 +99,14 @@ impl System {
 }
 
 #[derive(Clone)]
-pub struct EquationStorage {
+pub struct EquationStorage<N> {
     pub variables: usize,
     pub equations: usize,
 
-    pub data: Vec<i64>,
+    pub data: Vec<N>,
 }
 
-impl fmt::Debug for EquationStorage {
+impl<N: fmt::Debug> fmt::Debug for EquationStorage<N> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let equations: Vec<_> = self.iter_equations().collect();
 
@@ -112,41 +118,36 @@ impl fmt::Debug for EquationStorage {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct EquationView<'a> {
-    data: &'a [i64],
+#[derive(Debug)]
+pub struct EquationView<'a, N> {
+    data: &'a [N],
 }
 
+impl<'a, N> Clone for EquationView<'a, N> {
+    fn clone(&self) -> Self {
+        Self { data: self.data }
+    }
+}
+
+impl<'a, N> Copy for EquationView<'a, N> {}
+
 #[derive(Debug)]
-pub struct EquationViewMut<'a> {
-    pub data: &'a mut [i64],
+pub struct EquationViewMut<'a, N> {
+    pub data: &'a mut [N],
 }
 
 #[derive(Debug, Clone)]
-pub struct Equation {
-    data: Vec<i64>,
+pub struct Equation<N> {
+    data: Vec<N>,
 }
 
-impl EquationStorage {
+impl<N> EquationStorage<N> {
     pub fn new(variables: usize) -> Self {
         Self {
             variables,
             equations: 0,
             data: Vec::new(),
         }
-    }
-
-    pub fn add_equation(&mut self) -> EquationViewMut {
-        self.data
-            .resize(self.data.len() + self.get_equation_size(), 0);
-
-        let equation_idx = self.equations;
-
-        self.equations += 1;
-
-        let view = self.get_equation_mut(equation_idx);
-
-        view
     }
 
     /// Returns the number of terms in an equation.
@@ -159,7 +160,7 @@ impl EquationStorage {
         return self.variables;
     }
 
-    pub fn get_equation(&self, idx: usize) -> EquationView {
+    pub fn get_equation(&self, idx: usize) -> EquationView<'_, N> {
         assert!(idx < self.get_equations());
 
         let start = self.get_equation_size() * idx;
@@ -168,7 +169,7 @@ impl EquationStorage {
         EquationView { data }
     }
 
-    pub fn get_equation_mut(&mut self, idx: usize) -> EquationViewMut {
+    pub fn get_equation_mut(&mut self, idx: usize) -> EquationViewMut<'_, N> {
         assert!(idx < self.get_equations());
 
         let size = self.get_equation_size();
@@ -184,7 +185,7 @@ impl EquationStorage {
         return self.variables + 1;
     }
 
-    pub fn iter_equations(&self) -> impl Iterator<Item = EquationView<'_>> + '_ {
+    pub fn iter_equations(&self) -> impl Iterator<Item = EquationView<'_, N>> + '_ {
         self.data
             .chunks_exact(self.get_equation_size())
             .map(|equation_data| EquationView {
@@ -194,7 +195,7 @@ impl EquationStorage {
 
     pub fn iter_equations_mut(
         &mut self,
-    ) -> impl Iterator<Item = EquationViewMut<'_>> + '_ {
+    ) -> impl Iterator<Item = EquationViewMut<'_, N>> + '_ {
         let equation_size = self.get_equation_size();
         self.data
             .chunks_exact_mut(equation_size)
@@ -204,47 +205,66 @@ impl EquationStorage {
     }
 }
 
-impl<'a> EquationView<'a> {
-    pub fn get_result(&self) -> i64 {
-        return self.data[0];
+impl<N: Numeric> EquationStorage<N> {
+    pub fn add_equation(&mut self) -> EquationViewMut<'_, N> {
+        self.data
+            .resize(self.data.len() + self.get_equation_size(), N::from(0));
+
+        let equation_idx = self.equations;
+
+        self.equations += 1;
+
+        let view = self.get_equation_mut(equation_idx);
+
+        view
+    }
+}
+
+impl<'a, N> EquationView<'a, N> {
+    pub fn get_result(&self) -> &N {
+        return &self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient(&self, idx: usize) -> i64 {
-        return self.data[idx + 1];
+    pub fn get_coefficient(&self, idx: usize) -> &N {
+        return &self.data[idx + 1];
     }
 
-    pub fn iter_coefficients(&self) -> impl Iterator<Item = i64> + '_ {
-        self.data.iter().skip(1).copied()
+    pub fn iter_coefficients(&self) -> impl Iterator<Item = &N> + '_ {
+        self.data.iter().skip(1)
     }
+}
 
-    pub fn to_owned(&self) -> Equation {
+impl<'a, N: Clone> EquationView<'a, N> {
+    pub fn to_owned(&self) -> Equation<N> {
         Equation {
             data: self.data.to_owned(),
         }
     }
+}
 
+impl<'a, N: Numeric> EquationView<'a, N> {
     pub fn is_empty(&self) -> bool {
-        self.data.iter().all(|&x| x == 0)
+        self.data.iter().all(|x| x.equals(0))
     }
 
     pub fn equation_display(
         &self,
         varmap: &'a Vec<VariableIndex>,
     ) -> impl fmt::Display + 'a {
-        struct EquationDisplay<'a> {
-            equation: EquationView<'a>,
+        struct EquationDisplay<'a, N> {
+            equation: EquationView<'a, N>,
             varmap: &'a Vec<VariableIndex>,
         }
 
-        impl<'a> fmt::Display for EquationDisplay<'a> {
+        impl<'a, N: Numeric> fmt::Display for EquationDisplay<'a, N> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
                 let mut terms: Vec<_> = self
                     .equation
                     .iter_coefficients()
                     .enumerate()
-                    .filter(|&(_, coef)| coef != 0)
+                    .filter(|&(_, coef)| !coef.equals(0))
                     .map(|(idx, coef)| (coef, self.varmap[idx]))
                     .collect();
 
@@ -276,38 +296,38 @@ impl<'a> EquationView<'a> {
     }
 }
 
-impl<'a> EquationViewMut<'a> {
-    pub fn get_result(&mut self) -> &mut i64 {
+impl<'a, N: Numeric> EquationViewMut<'a, N> {
+    pub fn get_result(&mut self) -> &mut N {
         return &mut self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient(&mut self, idx: usize) -> &mut i64 {
+    pub fn get_coefficient(&mut self, idx: usize) -> &mut N {
         return &mut self.data[idx + 1];
     }
 
-    pub fn iter_coefficients(&mut self) -> impl Iterator<Item = &mut i64> + '_ {
+    pub fn iter_coefficients(&mut self) -> impl Iterator<Item = &mut N> + '_ {
         self.data.iter_mut().skip(1)
     }
 
-    pub fn get_coefficient_slice(&mut self) -> &mut [i64] {
+    pub fn get_coefficient_slice(&mut self) -> &mut [N] {
         &mut self.data[1..]
     }
 
     /// Sets all coefficient to zero.
     pub fn clear(&mut self) {
-        self.data.fill(0);
+        self.data.iter_mut().for_each(|i| i.assign(0));
     }
 
-    pub fn to_owned(&self) -> Equation {
+    pub fn to_owned(&self) -> Equation<N> {
         Equation {
             data: self.data.to_owned(),
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data.iter().all(|&x| x == 0)
+        self.data.iter().all(|x| x.equals(0))
     }
 
     pub fn display(
@@ -318,33 +338,33 @@ impl<'a> EquationViewMut<'a> {
     }
 }
 
-impl Equation {
-    pub fn get_result_mut(&mut self) -> &mut i64 {
+impl<N: Numeric> Equation<N> {
+    pub fn get_result_mut(&mut self) -> &mut N {
         return &mut self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient_mut(&mut self, idx: usize) -> &mut i64 {
+    pub fn get_coefficient_mut(&mut self, idx: usize) -> &mut N {
         return &mut self.data[idx + 1];
     }
 
-    pub fn iter_coefficients_mut(&mut self) -> impl Iterator<Item = &mut i64> + '_ {
+    pub fn iter_coefficients_mut(&mut self) -> impl Iterator<Item = &mut N> + '_ {
         self.data.iter_mut().skip(1)
     }
 
-    pub fn get_result(&self) -> i64 {
-        return self.data[0];
+    pub fn get_result(&self) -> &N {
+        return &self.data[0];
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
-    pub fn get_coefficient(&self, idx: usize) -> i64 {
-        return self.data[idx + 1];
+    pub fn get_coefficient(&self, idx: usize) -> &N {
+        return &self.data[idx + 1];
     }
 
-    pub fn iter_coefficients(&self) -> impl Iterator<Item = i64> + '_ {
-        self.data.iter().skip(1).copied()
+    pub fn iter_coefficients(&self) -> impl Iterator<Item = &N> + '_ {
+        self.data.iter().skip(1)
     }
 
     pub fn display<'a>(

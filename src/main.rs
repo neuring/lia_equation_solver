@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use structopt::StructOpt;
 
-use crate::system::VariableIndex;
+use crate::system::{VariableIndex, System};
 
 mod algo;
 mod math;
@@ -27,7 +27,7 @@ fn main() -> anyhow::Result<()> {
 
     let input = std::fs::read_to_string(config.input)?;
 
-    let mut system = parser::parse(&input)?;
+    let mut system: System<i64> = parser::parse(&input)?;
 
     let original_system = system.clone();
 
