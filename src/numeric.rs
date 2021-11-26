@@ -1,6 +1,6 @@
 use std::{
     fmt::{Display, Debug},
-    ops::{AddAssign, MulAssign, RemAssign},
+    ops::{AddAssign, MulAssign, RemAssign, DivAssign, SubAssign},
 };
 
 pub trait Numeric:
@@ -10,11 +10,17 @@ pub trait Numeric:
     + for<'a> AddAssign<&'a Self>
     + for<'a> MulAssign<&'a Self>
     + for<'a> RemAssign<&'a Self>
+    + for<'a> DivAssign<&'a Self>
+    + for<'a> SubAssign<&'a Self>
     + AddAssign<i64>
     + MulAssign<i64>
     + RemAssign<i64>
+    + DivAssign<i64>
+    + SubAssign<i64>
     + From<i64>
+    + PartialOrd<i64>
     + Eq
+    + PartialOrd<i64>
     + Ord
     + 'static
 {
@@ -22,11 +28,13 @@ pub trait Numeric:
     /// have changed (implementation defined)
     fn div_euc_assign(&mut self, rhs: &mut Self);
 
+    /// self <- gcd(self, rhs)
     fn gcd_assign(&mut self, rhs: &Self);
 
-    fn equals(&self, rhs: i64) -> bool;
-
     fn assign(&mut self, value: i64);
+
+    /// self <- |value|
+    fn abs_assign(&mut self, value: &Self);
 }
 
 impl Numeric for rug::Integer {
@@ -38,12 +46,12 @@ impl Numeric for rug::Integer {
         self.gcd_mut(rhs);
     }
 
-    fn equals(&self, rhs: i64) -> bool {
-        self == &rhs
-    }
-
     fn assign(&mut self, value: i64) {
         <Self as rug::Assign<i64>>::assign(self, value);
+    }
+
+    fn abs_assign(&mut self, value: &Self) {
+        <Self as rug::Assign<_>>::assign(self, value.abs_ref()); 
     }
 }
 
@@ -56,11 +64,11 @@ impl Numeric for i64 {
         *self = num::integer::gcd(*self, *rhs);
     }
 
-    fn equals(&self, rhs: i64) -> bool {
-        *self == rhs
-    }
-
     fn assign(&mut self, value: i64) {
         *self = value;
+    }
+
+    fn abs_assign(&mut self, value: &Self) {
+        *self = value.abs();
     }
 }

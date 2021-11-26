@@ -12,9 +12,7 @@ pub struct System<N> {
     pub varmap: Vec<VariableIndex>,
     pub next_var_index: usize,
 
-    pub reconstruction: Reconstruction,
-
-    pub scratch_pad: Vec<N>,
+    pub reconstruction: Reconstruction<N>,
 
     pub storage: EquationStorage<N>,
 }
@@ -24,7 +22,6 @@ impl<N: Numeric> System<N> {
         Self {
             varmap: (0..variables).map(|i| VariableIndex(i)).collect(),
             next_var_index: variables,
-            scratch_pad: vec![N::from(0); variables],
 
             reconstruction: Reconstruction::new(),
 
@@ -78,8 +75,7 @@ impl<N: Numeric> System<N> {
             //.map(|(variable_idx, coeff)| assignment[variable_idx.0] * coeff)
             let mut scratch = N::from(0);
             let mut sum = N::from(0);
-            self
-                .varmap
+            self.varmap
                 .iter()
                 .copied()
                 .zip(equation.iter_coefficients())
@@ -246,7 +242,7 @@ impl<'a, N: Clone> EquationView<'a, N> {
 
 impl<'a, N: Numeric> EquationView<'a, N> {
     pub fn is_empty(&self) -> bool {
-        self.data.iter().all(|x| x.equals(0))
+        self.data.iter().all(|x| x == &0)
     }
 
     pub fn equation_display(
@@ -264,7 +260,7 @@ impl<'a, N: Numeric> EquationView<'a, N> {
                     .equation
                     .iter_coefficients()
                     .enumerate()
-                    .filter(|&(_, coef)| !coef.equals(0))
+                    .filter(|&(_, coef)| coef != &0)
                     .map(|(idx, coef)| (coef, self.varmap[idx]))
                     .collect();
 
@@ -327,7 +323,7 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data.iter().all(|x| x.equals(0))
+        self.data.iter().all(|x| x == &0)
     }
 
     pub fn display(
@@ -376,11 +372,11 @@ impl<N: Numeric> Equation<N> {
 }
 
 #[derive(Debug, Clone)]
-pub struct Reconstruction {
-    tree: HashMap<VariableIndex, ReconstructedEquation>,
+pub struct Reconstruction<N> {
+    tree: HashMap<VariableIndex, ReconstructedEquation<N>>,
 }
 
-impl Reconstruction {
+impl<N> Reconstruction<N> {
     pub fn new() -> Self {
         Self {
             tree: HashMap::new(),
@@ -390,15 +386,17 @@ impl Reconstruction {
     pub fn add(
         &mut self,
         var: VariableIndex,
-        terms: Vec<(VariableIndex, i64)>,
-        constant: i64,
+        terms: Vec<(VariableIndex, N)>,
+        constant: N,
     ) {
         assert!(!self.tree.contains_key(&var));
 
         self.tree
             .insert(var, ReconstructedEquation { constant, terms });
     }
+}
 
+impl<N: fmt::Display> Reconstruction<N> {
     pub fn dump_dot(
         &self,
         total_variables: usize,
@@ -426,12 +424,18 @@ impl Reconstruction {
 
         writeln!(w, "}}")
     }
+}
 
-    pub fn evaluate_with_zeroes(&self, total_variables: usize) -> Vec<Option<i64>> {
+impl<N: Numeric> Reconstruction<N> {
+    pub fn evaluate_with_zeroes(
+        &self,
+        total_variables: usize,
+        scratch: &mut N,
+    ) -> Vec<Option<N>> {
         let mut visited = vec![None; total_variables];
 
         for var in self.tree.keys() {
-            self.evaluate_recursive(*var, &mut visited);
+            self.evaluate_recursive(*var, &mut visited, scratch);
         }
 
         visited
@@ -440,7 +444,8 @@ impl Reconstruction {
     fn evaluate_recursive(
         &self,
         current: VariableIndex,
-        visited: &mut Vec<Option<i64>>,
+        visited: &mut Vec<Option<N>>,
+        scratch: &mut N,
     ) {
         if visited[current.0].is_some() {
             return;
@@ -449,25 +454,27 @@ impl Reconstruction {
         let def = self.tree.get(&current);
 
         if let Some(def) = def {
-            let mut value = def.constant;
+            let mut value = def.constant.clone();
 
-            for &(child, coef) in &def.terms {
+            for (child, coef) in &def.terms {
                 if visited[child.0].is_none() {
-                    self.evaluate_recursive(child, visited);
+                    self.evaluate_recursive(*child, visited, scratch);
                 }
 
-                value += visited[child.0].unwrap() * coef;
+                scratch.clone_from(visited[child.0].as_ref().unwrap());
+                *scratch *= coef;
+                value += &*scratch;
             }
 
             visited[current.0] = Some(value);
         } else {
-            visited[current.0] = Some(0);
+            visited[current.0] = Some(N::from(0));
         }
     }
 }
 
 #[derive(Debug, Clone)]
-struct ReconstructedEquation {
-    constant: i64,
-    terms: Vec<(VariableIndex, i64)>,
+struct ReconstructedEquation<N> {
+    constant: N,
+    terms: Vec<(VariableIndex, N)>,
 }

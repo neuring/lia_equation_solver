@@ -22,12 +22,14 @@ struct Config {
     input: PathBuf,
 }
 
+type N = i64;
+
 fn main() -> anyhow::Result<()> {
     let config = Config::from_args();
 
     let input = std::fs::read_to_string(config.input)?;
 
-    let mut system: System<i64> = parser::parse(&input)?;
+    let mut system: System<N> = parser::parse(&input)?;
 
     let original_system = system.clone();
 
@@ -40,7 +42,7 @@ fn main() -> anyhow::Result<()> {
 
         let result = system
             .reconstruction
-            .evaluate_with_zeroes(system.next_var_index);
+            .evaluate_with_zeroes(system.next_var_index, &mut N::from(0));
 
         for (i, res) in result.iter().copied().enumerate() {
             if i >= system.storage.variables {
