@@ -62,7 +62,8 @@ pub fn solve_equation(system: &mut System) -> Result {
 
 fn preprocess(system: &mut EquationStorage) -> bool {
     for mut equation in system.iter_equations_mut().filter(|eq| !eq.is_empty()) {
-        let gcd = math::gcd(equation.get_coefficient_slice());
+        let mut gcd = 0;
+        math::gcd(&mut gcd, equation.get_coefficient_slice());
 
         if *equation.get_result() % gcd != 0 {
             return false;
@@ -198,16 +199,21 @@ fn reduce_coefficients(
 
             system.scratch_pad[coefficient_idx] = -m;
         } else {
-            let sm = math::special_mod(*coefficient, m);
+            let mut rounded_div = 0;
+            let mut sm = 0;
+            math::special_mod(&mut sm, &mut rounded_div, coefficient, &m);
 
-            *coefficient = math::rounded_divisor(*coefficient, m) + sm;
+            *coefficient = rounded_div + sm;
             system.scratch_pad[coefficient_idx] = sm;
         }
     }
 
     let result = equation.get_result();
-    let sm = math::special_mod(*result, m);
-    *result = math::rounded_divisor(*result, m) + sm;
+    let mut rounded_div = 0;
+    let mut sm = 0;
+    math::special_mod(&mut sm, &mut rounded_div, result, &m);
+
+    *result = rounded_div  + sm;
 
     let equation_sm = sm;
 

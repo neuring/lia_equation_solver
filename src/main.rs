@@ -9,6 +9,7 @@ mod math;
 mod parser;
 mod system;
 mod util;
+mod numeric;
 
 #[derive(Debug, StructOpt)]
 struct Config {

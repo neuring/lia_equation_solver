@@ -1,26 +1,40 @@
-use num::Integer;
+use crate::numeric::Numeric;
 
-pub fn gcd(values: &[i64]) -> i64 {
-    if values.len() == 1 {
-        values[0]
-    } else {
-        let half = values.len() / 2;
+pub fn gcd<N: Numeric>(result: &mut N, values: &[N]) {
+    result.clone_from(&values[0]);
 
-        let left = &values[..half];
-        let right = &values[half..];
-
-        let left_gcd = gcd(left);
-        let right_gcd = gcd(right);
-
-        left_gcd.gcd(&right_gcd)
+    for val in values.iter().skip(1) {
+        result.gcd_assign(val);
     }
 }
 
-pub fn special_mod(a: i64, b: i64) -> i64 {
-    a - b * f64::floor((a as f64) / (b as f64) + 0.5) as i64
+pub fn special_mod<N: Numeric>(
+    result: &mut N,
+    rounded_div: &mut N,
+    a: &N,
+    b: &N,
+) {
+    rounded_divisor(rounded_div, a, b, result);
+
+    result.clone_from(rounded_div);
+    *result *= b;
+    *result *= -1;
+    *result += a;
 }
 
 /// calculates ⌊a / b + 1/2 ⌋
-pub fn rounded_divisor(a: i64, b: i64) -> i64 {
-    f64::floor((a as f64) / (b as f64) + 0.5) as i64
+pub fn rounded_divisor<N: Numeric>(
+    result: &mut N,
+    a: &N,
+    b: &N,
+    scratch: &mut N,
+) {
+    result.clone_from(a);
+    *result *= 2;
+    *result += b;
+
+    scratch.clone_from(b);
+    *scratch *= 2;
+
+    result.div_euc_assign(scratch);
 }
