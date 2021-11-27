@@ -11,12 +11,15 @@ struct ScratchData<N> {
     pub scratch2: N,
     pub scratch3: N,
     pub scratch4: N,
+
+    pub scratch_flags: Vec<Option<usize>>,
 }
 
 impl<N: Numeric> ScratchData<N> {
     pub fn new(variables: usize) -> Self {
         Self {
             scratch_pad: vec![N::from(0); variables + 1],
+            scratch_flags: vec![None; variables + 1],
             scratch1: N::from(0),
             scratch2: N::from(0),
             scratch3: N::from(0),
@@ -44,7 +47,7 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
     let mut eliminates_since_last_resize = 0;
 
     while let Some(result) =
-        find_smallest_non_zero_coefficient(&system.storage, &mut scratch.scratch1)
+        find_smallest_non_zero_coefficient(&system.storage, &mut scratch)
     {
         if result.coefficient == &1 || result.coefficient == &-1 {
             eliminate_equation(
@@ -62,15 +65,13 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
             eliminates_since_last_resize += 1;
 
             if eliminates_since_last_resize > 20 && system.storage.variables > 4 {
-                //println!("resizing...");
-                //dbg!(&system.alive_terms);
-                //dbg!(&system.varmap);
-                //dbg!(&system.storage);
                 system.resize();
                 eliminates_since_last_resize = 0;
-                //dbg!(&system.varmap);
-                //dbg!(&system.storage);
             }
+
+            //if system.killed_variables % 10 == 0 {
+            //    system.storage.print_value_stats();
+            //}
         } else {
             assert_ne!(result.coefficient, &0);
             reduce_coefficients(
@@ -106,22 +107,21 @@ fn preprocess<N: Numeric>(
         let gcd = &mut scratch.scratch1;
         math::gcd(gcd, equation.get_coefficient_slice());
 
-        let rem = &mut scratch.scratch2;
-        rem.clone_from(equation.get_result());
-        *rem %= &*gcd;
-
-        if rem.cmp_zero().is_ne() {
-            return false;
-        }
-
         if *gcd > 1 {
-            // TODO: does this improve performance
+            let rem = &mut scratch.scratch2;
+            rem.clone_from(equation.get_result());
+            *rem %= &*gcd;
+
+            if rem.cmp_zero().is_ne() {
+                return false;
+            }
+
             for coefficient in equation.iter_coefficients() {
                 *coefficient /= &*gcd;
             }
-        }
 
-        *equation.get_result() /= &*gcd;
+            *equation.get_result() /= &*gcd;
+        }
     }
 
     true
@@ -136,44 +136,88 @@ struct SearchResult<'a, N> {
 
 fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
     system: &EquationStorage<N>,
-    scratch1: &'a mut N,
+    scratch: &'a mut ScratchData<N>,
 ) -> Option<SearchResult<'a, N>> {
-    let mut found_min = false;
+    let mut found_min = 0;
 
-    let current_min = scratch1;
-    let mut current_coefficient_idx = 0;
-    let mut current_equation_idx = 0;
+    let current_min = &mut scratch.scratch1;
 
-    let mut one_coef_counter = 0;
+    let min_coefficient_indices = &mut scratch.scratch_flags;
+    min_coefficient_indices.fill(None);
 
     for (equation_idx, equation) in system.iter_equations().enumerate() {
         for (coefficient_idx, coefficient) in
             equation.iter_coefficients().enumerate()
         {
-            if coefficient == &1 || coefficient == &-1 {
-                one_coef_counter += 1;
-            }
+            if coefficient.cmp_zero().is_ne() {
+                if found_min == 0 {
+                    // Found first minimum
+                    found_min += 1;
 
-            let is_new_minimum = coefficient.cmp_zero().is_ne()
-                && (!found_min || coefficient.abs_compare(&current_min).is_lt());
+                    min_coefficient_indices[coefficient_idx] = Some(equation_idx);
+                    current_min.clone_from(&coefficient);
+                } else {
+                    let cmp = coefficient.abs_compare(&current_min);
 
-            if is_new_minimum {
-                found_min = true;
-                current_min.clone_from(&coefficient);
-                current_coefficient_idx = coefficient_idx;
-                current_equation_idx = equation_idx;
+                    if cmp.is_eq() {
+                        // Found equal minimum.
+                        min_coefficient_indices[coefficient_idx] =
+                            Some(equation_idx);
+                        found_min += 1;
+                    } else if cmp.is_lt() {
+                        // Found better minimum
+                        found_min = 1;
+                        min_coefficient_indices.fill(None);
+
+                        min_coefficient_indices[coefficient_idx] =
+                            Some(equation_idx);
+                        current_min.clone_from(&coefficient);
+                    }
+                }
             }
         }
     }
 
-    //if one_coef_counter > 1 {
-    //    println!("Had elimination choice {}", one_coef_counter);
-    //}
+    let scratch_pad = &mut scratch.scratch_pad;
+    let scratch1 = &mut scratch.scratch1;
 
-    found_min.then(move || SearchResult {
-        equation_idx: current_equation_idx,
-        coefficient_idx: current_coefficient_idx,
-        coefficient: &*current_min,
+    // Decide which is the best minimum
+    let min = min_coefficient_indices
+        .iter()
+        .enumerate()
+        .filter_map(|(coef_idx, b)| {
+            b.as_ref().copied().map(|eq_idx| (coef_idx, eq_idx))
+        })
+        .zip(scratch_pad.iter_mut())
+        .map(|((coef_idx, eq_idx), sum)| {
+            sum.assign(0);
+
+            system
+                .iter_equations()
+                .map(|eq| eq.get_coefficient(coef_idx))
+                .for_each(|coef| {
+                    if coef.cmp_zero().is_ge() {
+                        *sum += coef;
+                    } else {
+                        *sum -= coef;
+                    }
+                });
+
+            (coef_idx, eq_idx, sum)
+        })
+        .min_by(|(_, _, sum1), (_, _, sum2)| sum1.cmp(sum2));
+
+    min.map(move |(coefficient_idx, equation_idx, _)| {
+        scratch1.clone_from(
+            system
+                .get_equation(equation_idx)
+                .get_coefficient(coefficient_idx),
+        );
+        SearchResult {
+            equation_idx,
+            coefficient_idx,
+            coefficient: scratch1,
+        }
     })
 }
 

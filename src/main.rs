@@ -51,17 +51,15 @@ fn main() -> anyhow::Result<()> {
             if let Some(res) = res {
                 println!(
                     "{} = {}",
-                    util::fmt_variable(VariableIndex(i), system.storage.variables),
+                    util::fmt_variable(VariableIndex(i), system.starting_variables),
                     res
                 )
             }
         }
 
         if config.verify {
-            let assignment: Vec<_> = result
-                .into_iter()
-                .map(|x| x.unwrap_or(N::from(-123)))
-                .collect();
+            let assignment: Vec<_> =
+                result.into_iter().map(|x| x.unwrap()).collect();
 
             match original_system.evaluate(&assignment) {
                 Ok(()) => println!("solution verified."),

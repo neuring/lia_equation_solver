@@ -161,6 +161,8 @@ impl<N: Numeric> System<N> {
 
         self.storage.equations -= empty_equations;
         self.storage.variables = new_variables;
+        data.truncate(self.storage.equations * (new_variables + 1));
+        data.shrink_to_fit()
     }
 }
 
@@ -280,6 +282,37 @@ impl<N: Numeric> EquationStorage<N> {
 
         view
     }
+
+    pub fn print_value_stats(&self) {
+        let mut data = self
+            .data
+            .iter()
+            .filter(|i| i.cmp_zero().is_ne())
+            .map(|i| {
+                let mut n = N::from(0);
+                n.clone_from(i);
+
+                if n.cmp_zero().is_lt() {
+                    n.negate();
+                }
+
+                n
+            })
+            .collect::<Vec<_>>();
+
+        data.sort_unstable();
+
+        if data.len() == 0 {
+            return;
+        }
+
+        println!(
+            "min = {}\nmedian = {}\nmax = {}",
+            &data[0],
+            &data[data.len() / 2],
+            &data[data.len() - 1]
+        );
+    }
 }
 
 impl<'a, N> EquationView<'a, N> {
@@ -290,7 +323,7 @@ impl<'a, N> EquationView<'a, N> {
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
     #[allow(unused)]
-    pub fn get_coefficient(&self, idx: usize) -> &N {
+    pub fn get_coefficient(&self, idx: usize) -> &'a N {
         return &self.data[idx + 1];
     }
 

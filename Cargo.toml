@@ -6,6 +6,7 @@ authors = ["neuring <neuring@pm.me>"]
 
 [profile.release]
 overflow-checks = true
+debug = true
 
 [dependencies]
 anyhow = "1.0.45"
