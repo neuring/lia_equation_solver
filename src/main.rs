@@ -40,6 +40,13 @@ fn main() -> anyhow::Result<()> {
     if result == algo::Result::Sat {
         println!("Solvable");
 
+        if let Some(dump_path) = config.dump_dot {
+            let f = std::fs::File::create(dump_path)?;
+            system
+                .reconstruction
+                .dump_dot(system.storage.variables, f)?;
+        }
+
         let result = system
             .reconstruction
             .evaluate_with_zeroes(system.next_var_index, &mut N::from(0));
@@ -58,8 +65,10 @@ fn main() -> anyhow::Result<()> {
         }
 
         if config.verify {
-            let assignment: Vec<_> =
-                result.into_iter().map(|x| x.unwrap()).collect();
+            let assignment: Vec<_> = result
+                .into_iter()
+                .map(|x| x.unwrap_or(N::from(0)))
+                .collect();
 
             match original_system.evaluate(&assignment) {
                 Ok(()) => println!("solution verified."),
@@ -71,13 +80,6 @@ fn main() -> anyhow::Result<()> {
         }
     } else {
         println!("Unsolvable");
-    }
-
-    if let Some(dump_path) = config.dump_dot {
-        let f = std::fs::File::create(dump_path)?;
-        system
-            .reconstruction
-            .dump_dot(system.storage.variables, f)?;
     }
 
     if result == algo::Result::Sat {

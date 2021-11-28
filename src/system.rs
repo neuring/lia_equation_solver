@@ -283,35 +283,11 @@ impl<N: Numeric> EquationStorage<N> {
         view
     }
 
-    pub fn print_value_stats(&self) {
-        let mut data = self
-            .data
+    pub fn print_value_stats(&self, idx: usize, mut writer: impl std::io::Write) {
+        self.data
             .iter()
             .filter(|i| i.cmp_zero().is_ne())
-            .map(|i| {
-                let mut n = N::from(0);
-                n.clone_from(i);
-
-                if n.cmp_zero().is_lt() {
-                    n.negate();
-                }
-
-                n
-            })
-            .collect::<Vec<_>>();
-
-        data.sort_unstable();
-
-        if data.len() == 0 {
-            return;
-        }
-
-        println!(
-            "min = {}\nmedian = {}\nmax = {}",
-            &data[0],
-            &data[data.len() / 2],
-            &data[data.len() - 1]
-        );
+            .for_each(|i| writeln!(writer, "{} {}", idx, i).unwrap());
     }
 }
 
