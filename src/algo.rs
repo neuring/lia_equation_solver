@@ -183,20 +183,24 @@ fn eliminate_equation<N: Numeric>(
     let storage = &mut system.storage;
     let varmap = &system.varmap;
 
-    let mut eliminated_equation = EquationViewMut {
-        data: &mut scratch.scratch_pad[..storage.variables + 1],
-    };
-    eliminated_equation.copy_into(storage.get_equation(eliminated_equation_idx));
-    let eliminated_equation = eliminated_equation.into_ref();
-
+    let mut eliminated_equation = storage.get_equation_mut(eliminated_equation_idx);
     let eliminated_coefficient =
         eliminated_equation.get_coefficient(eliminated_coefficient_idx);
 
-    let sign = if eliminated_coefficient.cmp_zero().is_gt() {
-        1
-    } else {
-        -1
+    if eliminated_coefficient.cmp_zero().is_lt() {
+        eliminated_equation
+            .data
+            .iter_mut()
+            .for_each(|value| value.negate());
+    }
+
+    let mut eliminated_equation_copy = EquationViewMut {
+        data: &mut scratch.scratch_pad[..storage.variables + 1],
     };
+    eliminated_equation_copy
+        .copy_into(storage.get_equation(eliminated_equation_idx));
+
+    let eliminated_equation = eliminated_equation_copy.into_ref();
 
     for (equation_idx, mut equation) in storage
         .iter_equations_mut()
@@ -211,14 +215,14 @@ fn eliminate_equation<N: Numeric>(
                 .enumerate()
                 .filter(|(i, c)| **c != 0 && *i != eliminated_coefficient_idx)
                 .map(|(i, c)| {
-                    let mut result = N::from(-sign);
-                    result *= &*c;
+                    let mut result = c.clone();
+                    result.negate();
                     (varmap[i], result)
                 })
                 .collect();
 
-            let mut constant = N::from(-sign);
-            constant *= &*equation.get_result();
+            let mut constant = equation.get_result().clone();
+            constant.negate();
             system.reconstruction.add(var, terms, constant);
 
             equation.clear();
@@ -233,7 +237,6 @@ fn eliminate_equation<N: Numeric>(
             {
                 let s = &mut scratch.scratch1;
                 s.clone_from(&*target_coefficient_factor);
-                *s *= sign;
                 *s *= coefficient;
 
                 *target_coefficient -= &*s;
@@ -245,7 +248,6 @@ fn eliminate_equation<N: Numeric>(
 
             let s = &mut scratch.scratch1;
             s.clone_from(&*target_coefficient_factor);
-            *s *= sign;
             *s *= eliminated_equation.get_result();
 
             *equation.get_result() -= &*s;

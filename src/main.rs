@@ -17,7 +17,7 @@ struct Config {
     dump_dot: Option<PathBuf>,
 
     #[structopt(short, long)]
-    verify: bool,
+    no_verify: bool,
 
     input: PathBuf,
 }
@@ -66,7 +66,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        if config.verify {
+        if !config.no_verify {
             let assignment: Vec<_> = result
                 .into_iter()
                 .map(|x| x.unwrap_or(N::from(0)))

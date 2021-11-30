@@ -422,6 +422,8 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
     pub fn into_ref(self) -> EquationView<'a, N> {
         EquationView { data: &*self.data }
     }
+
+    pub fn eliminate(&self, idx: usize, term: EquationView<'_>) {}
 }
 
 impl<N: Numeric> Equation<N> {
@@ -453,7 +455,7 @@ pub struct Reconstruction<N> {
     tree: HashMap<VariableIndex, ReconstructedEquation<N>>,
 }
 
-impl<N> Reconstruction<N> {
+impl<N: fmt::Display> Reconstruction<N> {
     pub fn new() -> Self {
         Self {
             tree: HashMap::new(),
@@ -554,4 +556,23 @@ impl<N: Numeric> Reconstruction<N> {
 struct ReconstructedEquation<N> {
     constant: N,
     terms: Vec<(VariableIndex, N)>,
+}
+
+impl<N: fmt::Display> ReconstructedEquation<N> {
+    #[allow(unused)]
+    pub fn display(&self, total_vars: usize) -> impl fmt::Display + '_ {
+        struct DisplayWrapper<'a, N>(&'a ReconstructedEquation<N>, usize);
+
+        impl<'a, N: fmt::Display> fmt::Display for DisplayWrapper<'a, N> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let terms = self.0.terms.iter().map(|(idx, coef)| {
+                    format!("{}{}", coef, util::fmt_variable(*idx, self.1))
+                });
+
+                write!(f, "{} + {}", self.0.constant, itertools::join(terms, " + "))
+            }
+        }
+
+        DisplayWrapper(self, total_vars)
+    }
 }
