@@ -252,6 +252,8 @@ fn reduce_coefficients<N: Numeric>(
 ) {
     let storage = &mut system.storage;
 
+    let storage_variables = storage.variables;
+
     let mut equation = storage.get_equation_mut(equation_idx);
 
     let coefficient = &mut scratch.scratch4;
@@ -262,8 +264,7 @@ fn reduce_coefficients<N: Numeric>(
     let original_coefficient_idx = coefficient_idx;
 
     if coefficient.cmp_zero().is_lt() {
-        equation.iter_coefficients().for_each(|c| c.negate());
-        equation.get_result().negate();
+        equation.data.iter_mut().for_each(|c| c.negate());
         coefficient.negate();
     }
 
@@ -271,14 +272,22 @@ fn reduce_coefficients<N: Numeric>(
     m.clone_from(&*coefficient);
     *m += 1;
 
-    for (coefficient_idx, coefficient) in equation.iter_coefficients().enumerate() {
-        if coefficient_idx == original_coefficient_idx {
+    let substitution_term = EquationViewMut {
+        data: &mut scratch.scratch_pad[..storage_variables + 1],
+    };
+
+    for (coefficient, coefficient_idx) in equation.data.iter_mut().zip(0..) {
+        // + 1, because this loop starts with the result element as zero, not the first coefficient.
+        if coefficient_idx == original_coefficient_idx + 1 {
+            assert!(coefficient_idx > 0);
+
             coefficient.negate();
 
             let minus_m = &mut scratch.scratch2;
             minus_m.clone_from(m);
             minus_m.negate();
-            scratch.scratch_pad[coefficient_idx].clone_from(&*minus_m);
+
+            substitution_term.data[coefficient_idx].clone_from(&*minus_m);
         } else {
             let rounded_div = &mut scratch.scratch2;
             let sm = &mut scratch.scratch3;
@@ -286,86 +295,39 @@ fn reduce_coefficients<N: Numeric>(
 
             coefficient.clone_from(&rounded_div);
             *coefficient += &*sm;
-            scratch.scratch_pad[coefficient_idx].clone_from(sm);
+            substitution_term.data[coefficient_idx].clone_from(sm);
         }
     }
 
-    let result = equation.get_result();
-    let rounded_div = &mut scratch.scratch2;
-    let sm = &mut scratch.scratch3;
-    math::special_mod(sm, rounded_div, &*result, &*m);
+    let substitution_term = substitution_term.into_ref();
 
-    result.clone_from(&rounded_div);
-    *result += &*sm;
-
-    let equation_sm = sm;
-
-    for (e_idx, mut equation) in storage
+    for equation in storage
         .iter_equations_mut()
         .enumerate()
-        .filter(|(_, eq)| !eq.is_empty())
+        .filter(|(eq_idx, eq)| !eq.is_empty() && *eq_idx != equation_idx)
+        .map(|(_, eq)| eq)
     {
-        if equation_idx != e_idx {
-            let coefficient_factor = &mut scratch.scratch4;
-            coefficient_factor.clone_from(equation.get_coefficient(coefficient_idx));
-
-            for (c_idx, coefficient) in equation.iter_coefficients().enumerate() {
-                if c_idx == coefficient_idx {
-                    coefficient.clone_from(&*m);
-                    coefficient.negate();
-                    *coefficient *= &*coefficient_factor;
-                } else {
-                    let summand = &mut scratch.scratch2;
-                    summand.clone_from(&coefficient_factor);
-                    *summand *= &scratch.scratch_pad[c_idx];
-                    *coefficient += &*summand;
-                }
-            }
-
-            let summand = &mut scratch.scratch2;
-            summand.clone_from(&coefficient_factor);
-            *summand *= &*equation_sm;
-            *equation.get_result() += &*summand;
-        }
+        substitute_variable_with_term(
+            equation,
+            original_coefficient_idx,
+            substitution_term,
+            &mut scratch.scratch2,
+            &mut scratch.scratch3,
+        )
     }
 
     let old_var = system.varmap[original_coefficient_idx];
     let new_var = system.new_variable();
     system.map_variable(original_coefficient_idx, new_var);
 
-    //println!(
-    //    "{} = {}",
-    //    util::fmt_variable(old_var, system.storage.variables),
-    //    itertools::join(
-    //        scratch
-    //            .scratch_pad
-    //            .iter()
-    //            .enumerate()
-    //            .filter(|(_, c)| *c != &0)
-    //            .map(|(i, c)| (system.varmap[i], c))
-    //            .map(|(x, c)| format!(
-    //                "{}{}",
-    //                c,
-    //                util::fmt_variable(x, system.storage.variables)
-    //            ))
-    //            .chain(std::iter::once(format!("{}", {
-    //                let mut x = equation_sm.clone();
-    //                x *= -1;
-    //                x
-    //            }))),
-    //        " + "
-    //    )
-    //);
-
-    let terms = scratch
-        .scratch_pad
-        .iter()
-        .take(system.storage.variables)
+    // Add substitution to reconstruction
+    let terms = substitution_term
+        .iter_coefficients()
         .enumerate()
         .filter(|(_, c)| c.cmp_zero().is_ne())
         .map(|(i, c)| (system.varmap[i], c.clone()))
         .collect();
-    let constant = equation_sm.clone();
+    let constant = substitution_term.get_result().clone();
     system.reconstruction.add(old_var, terms, constant);
 }
 
