@@ -98,6 +98,8 @@ impl<N: Numeric> System<N> {
                     sum += &scratch;
                 });
 
+            sum.negate();
+
             if &sum != equation.get_result() {
                 return Err(equation);
             }
