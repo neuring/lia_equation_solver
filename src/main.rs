@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
 
         let result = system
             .reconstruction
-            .evaluate_with_zeroes(system.next_var_index, &mut N::from(0));
+            .evaluate_solution(system.next_var_index, &mut N::from(0));
 
         for (i, res) in result.iter().cloned().enumerate() {
             if i >= system.starting_variables {
@@ -61,7 +61,7 @@ fn main() -> anyhow::Result<()> {
                 println!(
                     "{} = {}",
                     util::fmt_variable(VariableIndex(i), system.starting_variables),
-                    res
+                    res.display_solution()
                 )
             }
         }
@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
         if !config.no_verify {
             let assignment: Vec<_> = result
                 .into_iter()
-                .map(|x| x.unwrap_or(N::from(0)))
+                .map(|x| x.map(|e| e.constant.clone()).unwrap_or(N::from(0)))
                 .collect();
 
             match original_system.evaluate(&assignment) {

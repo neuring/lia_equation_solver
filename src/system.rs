@@ -454,7 +454,7 @@ impl<N: Numeric> Equation<N> {
 
 #[derive(Debug, Clone)]
 pub struct Reconstruction<N> {
-    tree: HashMap<VariableIndex, ReconstructedEquation<N>>,
+    tree: HashMap<VariableIndex, SparseEquation<N>>,
 }
 
 impl<N: fmt::Display> Reconstruction<N> {
@@ -472,8 +472,7 @@ impl<N: fmt::Display> Reconstruction<N> {
     ) {
         assert!(!self.tree.contains_key(&var));
 
-        self.tree
-            .insert(var, ReconstructedEquation { constant, terms });
+        self.tree.insert(var, SparseEquation { constant, terms });
     }
 }
 
@@ -508,15 +507,17 @@ impl<N: fmt::Display> Reconstruction<N> {
 }
 
 impl<N: Numeric> Reconstruction<N> {
-    pub fn evaluate_with_zeroes(
+    pub fn evaluate_solution(
         &self,
         total_variables: usize,
         scratch: &mut N,
-    ) -> Vec<Option<N>> {
+    ) -> Vec<Option<SparseEquation<N>>> {
         let mut visited = vec![None; total_variables];
 
+        let mut next_var_id = 0;
+
         for var in self.tree.keys() {
-            self.evaluate_recursive(*var, &mut visited, scratch);
+            self.evaluate_recursive(*var, &mut visited, scratch, &mut next_var_id);
         }
 
         visited
@@ -525,8 +526,9 @@ impl<N: Numeric> Reconstruction<N> {
     fn evaluate_recursive(
         &self,
         current: VariableIndex,
-        visited: &mut Vec<Option<N>>,
+        visited: &mut Vec<Option<SparseEquation<N>>>,
         scratch: &mut N,
+        next_var_id: &mut usize,
     ) {
         if visited[current.0].is_some() {
             return;
@@ -535,35 +537,64 @@ impl<N: Numeric> Reconstruction<N> {
         let def = self.tree.get(&current);
 
         if let Some(def) = def {
-            let mut value = def.constant.clone();
+            let mut value = SparseEquation {
+                constant: def.constant.clone(),
+                terms: vec![],
+            };
 
             for (child, coef) in &def.terms {
                 if visited[child.0].is_none() {
-                    self.evaluate_recursive(*child, visited, scratch);
+                    self.evaluate_recursive(*child, visited, scratch, next_var_id);
                 }
 
-                scratch.clone_from(visited[child.0].as_ref().unwrap());
-                *scratch *= coef;
-                value += &*scratch;
+                let child_equation = visited[child.0].as_ref().unwrap();
+
+                scratch.clone_from(coef);
+                *scratch *= &child_equation.constant;
+                value.constant += &*scratch;
+
+                for (child_var, child_var_coef) in &child_equation.terms {
+                    scratch.clone_from(coef);
+                    *scratch *= child_var_coef;
+
+                    let current_coef = if let Some(current_coef) = value
+                        .terms
+                        .iter_mut()
+                        .find(|(id, _)| id == child_var)
+                        .map(|(_, c)| c)
+                    {
+                        current_coef
+                    } else {
+                        value.terms.push((*child_var, N::from(0)));
+                        &mut value.terms.last_mut().unwrap().1
+                    };
+
+                    *current_coef += &*scratch;
+                }
             }
 
             visited[current.0] = Some(value);
         } else {
-            visited[current.0] = Some(N::from(0));
+            let var = VariableIndex(*next_var_id);
+            *next_var_id += 1;
+            visited[current.0] = Some(SparseEquation {
+                constant: N::from(0),
+                terms: vec![(var, N::from(1))],
+            });
         }
     }
 }
 
 #[derive(Debug, Clone)]
-struct ReconstructedEquation<N> {
-    constant: N,
-    terms: Vec<(VariableIndex, N)>,
+pub struct SparseEquation<N> {
+    pub constant: N,
+    pub terms: Vec<(VariableIndex, N)>,
 }
 
-impl<N: fmt::Display> ReconstructedEquation<N> {
+impl<N: Numeric> SparseEquation<N> {
     #[allow(unused)]
-    pub fn display(&self, total_vars: usize) -> impl fmt::Display + '_ {
-        struct DisplayWrapper<'a, N>(&'a ReconstructedEquation<N>, usize);
+    pub fn display_definition(&self, total_vars: usize) -> impl fmt::Display + '_ {
+        struct DisplayWrapper<'a, N>(&'a SparseEquation<N>, usize);
 
         impl<'a, N: fmt::Display> fmt::Display for DisplayWrapper<'a, N> {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -576,5 +607,40 @@ impl<N: fmt::Display> ReconstructedEquation<N> {
         }
 
         DisplayWrapper(self, total_vars)
+    }
+
+    #[allow(unused)]
+    pub fn display_solution(&self) -> impl fmt::Display + '_ {
+        struct DisplayWrapper<'a, N>(&'a SparseEquation<N>);
+
+        impl<'a, N: Numeric> fmt::Display for DisplayWrapper<'a, N> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                let terms = self
+                    .0
+                    .terms
+                    .iter()
+                    .filter(|(_, coef)| coef.cmp_zero().is_ne())
+                    .map(|(idx, coef)| {
+                        if coef == &1 {
+                            format!("t{}", util::subscript(idx.0 as u32))
+                        } else {
+                            format!("{} t{}", coef, util::subscript(idx.0 as u32))
+                        }
+                    });
+
+                let terms = terms.chain(
+                    self.0
+                        .constant
+                        .cmp_zero()
+                        .is_ne()
+                        .then(|| format!("{}", self.0.constant))
+                        .into_iter(),
+                );
+
+                write!(f, "{}", itertools::join(terms, " + "))
+            }
+        }
+
+        DisplayWrapper(self)
     }
 }
