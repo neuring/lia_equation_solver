@@ -1,7 +1,7 @@
 use crate::{
     math,
     numeric::Numeric,
-    system::{EquationStorage, EquationViewMut, System},
+    system::{EquationStorage, EquationView, EquationViewMut, System},
 };
 
 struct ScratchData<N> {
@@ -183,10 +183,13 @@ fn eliminate_equation<N: Numeric>(
     let storage = &mut system.storage;
     let varmap = &system.varmap;
 
+    let storage_variables = storage.variables;
+
     let mut eliminated_equation = storage.get_equation_mut(eliminated_equation_idx);
     let eliminated_coefficient =
         eliminated_equation.get_coefficient(eliminated_coefficient_idx);
 
+    // Normalise target coefficient to be 1 (if it is -1)
     if eliminated_coefficient.cmp_zero().is_lt() {
         eliminated_equation
             .data
@@ -195,63 +198,47 @@ fn eliminate_equation<N: Numeric>(
     }
 
     let mut eliminated_equation_copy = EquationViewMut {
-        data: &mut scratch.scratch_pad[..storage.variables + 1],
+        data: &mut scratch.scratch_pad[..storage_variables + 1],
     };
-    eliminated_equation_copy
-        .copy_into(storage.get_equation(eliminated_equation_idx));
+    eliminated_equation_copy.copy_into(eliminated_equation.as_ref());
 
+    // Remove equation from storage
+    eliminated_equation.clear();
+
+    // Make equation to term which can be substituted into all other equations.
+    eliminated_equation_copy
+        .get_coefficient(eliminated_coefficient_idx)
+        .assign(0);
+
+    eliminated_equation_copy
+        .data
+        .iter_mut()
+        .for_each(|v| v.negate());
+
+    // seal term to prevent accidental mutation
     let eliminated_equation = eliminated_equation_copy.into_ref();
 
-    for (equation_idx, mut equation) in storage
-        .iter_equations_mut()
+    // Add eliminated equation to reconstruction
+    let terms = eliminated_equation
+        .iter_coefficients()
         .enumerate()
-        .filter(|(_, eq)| !eq.is_empty())
-    {
-        if equation_idx == eliminated_equation_idx {
-            // Add eliminated equation to reconstruction
-            let var = system.varmap[eliminated_coefficient_idx];
-            let terms = equation
-                .iter_coefficients()
-                .enumerate()
-                .filter(|(i, c)| **c != 0 && *i != eliminated_coefficient_idx)
-                .map(|(i, c)| {
-                    let mut result = c.clone();
-                    result.negate();
-                    (varmap[i], result)
-                })
-                .collect();
+        .filter(|&(_, c)| c.cmp_zero().is_ne())
+        .map(|(i, c)| (varmap[i], c.clone()))
+        .collect();
 
-            let mut constant = equation.get_result().clone();
-            constant.negate();
-            system.reconstruction.add(var, terms, constant);
+    let constant = eliminated_equation.get_result().clone();
 
-            equation.clear();
-        } else {
-            let target_coefficient_factor = &mut scratch.scratch2;
-            target_coefficient_factor
-                .clone_from(equation.get_coefficient(eliminated_coefficient_idx));
+    let var = system.varmap[eliminated_coefficient_idx];
+    system.reconstruction.add(var, terms, constant);
 
-            for (target_coefficient, coefficient) in equation
-                .iter_coefficients()
-                .zip(eliminated_equation.iter_coefficients())
-            {
-                let s = &mut scratch.scratch1;
-                s.clone_from(&*target_coefficient_factor);
-                *s *= coefficient;
-
-                *target_coefficient -= &*s;
-            }
-
-            equation
-                .get_coefficient(eliminated_coefficient_idx)
-                .assign(0);
-
-            let s = &mut scratch.scratch1;
-            s.clone_from(&*target_coefficient_factor);
-            *s *= eliminated_equation.get_result();
-
-            *equation.get_result() -= &*s;
-        }
+    for equation in storage.iter_equations_mut().filter(|eq| !eq.is_empty()) {
+        substitute_variable_with_term(
+            equation,
+            eliminated_coefficient_idx,
+            eliminated_equation,
+            &mut scratch.scratch3,
+            &mut scratch.scratch4,
+        );
     }
 
     system.kill_variable(eliminated_coefficient_idx);
@@ -427,4 +414,30 @@ fn simplify<N: Numeric>(
 
 fn find_any_contradictions<N: Numeric>(storage: &EquationStorage<N>) -> bool {
     storage.iter_equations().any(|eq| !eq.is_empty())
+}
+
+// Inserts `term` at coefficient index `target_idx`.
+// The term might have a new variable at `target_idx` which then replaces
+// the variable originally in `self`
+fn substitute_variable_with_term<N: Numeric>(
+    mut target: EquationViewMut<'_, N>,
+    target_idx: usize,
+    term: EquationView<'_, N>,
+    scratch1: &mut N,
+    scratch2: &mut N,
+) {
+    let factor = scratch1;
+
+    let target_coef = target.get_coefficient(target_idx);
+
+    factor.clone_from(target_coef);
+
+    target_coef.assign(0);
+
+    let result = scratch2;
+    for (target_coef, term_coef) in target.data.iter_mut().zip(term.data.iter()) {
+        result.clone_from(factor);
+        *result *= term_coef;
+        *target_coef += &*result;
+    }
 }

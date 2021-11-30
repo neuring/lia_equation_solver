@@ -190,7 +190,7 @@ impl<N: fmt::Debug> fmt::Debug for EquationStorage<N> {
 
 #[derive(Debug)]
 pub struct EquationView<'a, N> {
-    data: &'a [N],
+    pub data: &'a [N],
 }
 
 impl<'a, N> Clone for EquationView<'a, N> {
@@ -423,7 +423,9 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
         EquationView { data: &*self.data }
     }
 
-    pub fn eliminate(&self, idx: usize, term: EquationView<'_>) {}
+    pub fn as_ref(&'a self) -> EquationView<'a, N> {
+        EquationView { data: &*self.data }
+    }
 }
 
 impl<N: Numeric> Equation<N> {
