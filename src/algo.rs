@@ -113,6 +113,7 @@ fn preprocess<N: Numeric>(
         if *gcd > 1 {
             let rem = &mut scratch.scratch2;
             rem.clone_from(equation.get_result());
+            rem.negate();
             *rem %= &*gcd;
 
             if rem.cmp_zero().is_ne() {
@@ -183,7 +184,7 @@ fn eliminate_equation<N: Numeric>(
     let varmap = &system.varmap;
 
     let mut eliminated_equation = EquationViewMut {
-        data: &mut scratch.scratch_pad,
+        data: &mut scratch.scratch_pad[..storage.variables + 1],
     };
     eliminated_equation.copy_into(storage.get_equation(eliminated_equation_idx));
     let eliminated_equation = eliminated_equation.into_ref();
@@ -216,7 +217,7 @@ fn eliminate_equation<N: Numeric>(
                 })
                 .collect();
 
-            let mut constant = N::from(sign);
+            let mut constant = N::from(-sign);
             constant *= &*equation.get_result();
             system.reconstruction.add(var, terms, constant);
 
@@ -375,8 +376,7 @@ fn reduce_coefficients<N: Numeric>(
         .filter(|(_, c)| c.cmp_zero().is_ne())
         .map(|(i, c)| (system.varmap[i], c.clone()))
         .collect();
-    let mut constant = equation_sm.clone();
-    constant.negate();
+    let constant = equation_sm.clone();
     system.reconstruction.add(old_var, terms, constant);
 }
 
@@ -409,6 +409,7 @@ fn simplify<N: Numeric>(
 
             let modulo = &mut scratch.scratch2;
             modulo.clone_from(equation.get_result());
+            modulo.negate();
             *modulo %= &*coef;
 
             if modulo.cmp_zero().is_ne() {

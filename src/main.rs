@@ -33,7 +33,9 @@ fn main() -> anyhow::Result<()> {
 
     let original_system = system.clone();
 
-    println!("{}", system.equations_display());
+    if system.starting_variables <= 10 {
+        println!("{}", system.equations_display());
+    }
 
     let result = algo::solve_equation(&mut system);
 

@@ -358,7 +358,7 @@ impl<'a, N: Numeric> EquationView<'a, N> {
                     )
                 };
 
-                write!(f, "{} = {}", equation_lhs, self.equation.get_result())
+                write!(f, "{} + {}", self.equation.get_result(), equation_lhs)
             }
         }
 

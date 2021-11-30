@@ -83,7 +83,7 @@ fn parse_equation<'a, N: Numeric>(
 
     let equation_result = values.next().ok_or(MissingValue("equation result"))??;
 
-    *storage.get_result() = N::from(equation_result);
+    *storage.get_result() = N::from(-equation_result);
 
     let expected_zero = values.next().ok_or(MissingValue("trailing zero"))??;
 
