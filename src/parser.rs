@@ -58,9 +58,9 @@ fn parse_header(header: &str) -> Result<HeaderData> {
     })
 }
 
-fn parse_equation<'a, N: Numeric>(
-    input: &'a str,
-    mut storage: EquationViewMut<'_, N>,
+fn parse_equation<N: Numeric>(
+    input: &str,
+    mut storage: EquationViewMut<N>,
 ) -> Result<()> {
     let mut values = input
         .split_whitespace()
@@ -97,7 +97,7 @@ fn parse_equation<'a, N: Numeric>(
 fn is_empty_line(line: &str) -> Option<&str> {
     let line = line.trim();
 
-    (line.is_empty() || line.starts_with("#"))
+    (line.is_empty() || line.starts_with('#'))
         .not()
         .then(|| line)
 }

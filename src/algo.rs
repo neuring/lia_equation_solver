@@ -158,9 +158,9 @@ fn find_smallest_non_zero_coefficient<'a, N: Numeric>(
             .enumerate()
             .filter(|(_, coef)| coef.cmp_zero().is_ne())
         {
-            if !found_min || coefficient.abs_compare(&current_min).is_lt() {
+            if !found_min || coefficient.abs_compare(current_min).is_lt() {
                 found_min = true;
-                current_min.clone_from(&coefficient);
+                current_min.clone_from(coefficient);
                 min_equation_idx = equation_idx;
                 min_coefficient_idx = coefficient_idx;
             }
@@ -291,9 +291,9 @@ fn reduce_coefficients<N: Numeric>(
         } else {
             let rounded_div = &mut scratch.scratch2;
             let sm = &mut scratch.scratch3;
-            math::special_mod(sm, rounded_div, &*coefficient, &m);
+            math::special_mod(sm, rounded_div, &*coefficient, m);
 
-            coefficient.clone_from(&rounded_div);
+            coefficient.clone_from(rounded_div);
             *coefficient += &*sm;
             substitution_term.data[coefficient_idx].clone_from(sm);
         }

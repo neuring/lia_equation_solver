@@ -1,7 +1,5 @@
 use std::{collections::HashMap, fmt};
 
-use itertools;
-
 use crate::{numeric::Numeric, util};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -27,7 +25,7 @@ pub struct System<N> {
 impl<N: Numeric> System<N> {
     pub fn new(variables: usize) -> Self {
         Self {
-            varmap: (0..variables).map(|i| VariableIndex(i)).collect(),
+            varmap: (0..variables).map(VariableIndex).collect(),
             next_var_index: variables,
 
             alive_terms: vec![true; variables],
@@ -222,9 +220,10 @@ impl<N> EquationStorage<N> {
 
     /// Returns the number of equations in the system of equations.
     pub fn get_equations(&self) -> usize {
-        return self.variables;
+        self.variables
     }
 
+    #[allow(unused)]
     pub fn get_equation(&self, idx: usize) -> EquationView<'_, N> {
         assert!(idx < self.get_equations());
 
@@ -247,7 +246,7 @@ impl<N> EquationStorage<N> {
     /// Returns the number of integers an equation contains.
     /// It is the number of terms plus one, to account for the equation result.
     fn get_equation_size(&self) -> usize {
-        return self.variables + 1;
+        self.variables + 1
     }
 
     pub fn iter_equations(&self) -> impl Iterator<Item = EquationView<'_, N>> + '_ {
@@ -280,29 +279,20 @@ impl<N: Numeric> EquationStorage<N> {
 
         self.equations += 1;
 
-        let view = self.get_equation_mut(equation_idx);
-
-        view
-    }
-
-    pub fn print_value_stats(&self, idx: usize, mut writer: impl std::io::Write) {
-        self.data
-            .iter()
-            .filter(|i| i.cmp_zero().is_ne())
-            .for_each(|i| writeln!(writer, "{} {}", idx, i).unwrap());
+        self.get_equation_mut(equation_idx)
     }
 }
 
 impl<'a, N> EquationView<'a, N> {
     pub fn get_result(&self) -> &N {
-        return &self.data[0];
+        &self.data[0]
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
     #[allow(unused)]
     pub fn get_coefficient(&self, idx: usize) -> &'a N {
-        return &self.data[idx + 1];
+        &self.data[idx + 1]
     }
 
     pub fn iter_coefficients(&self) -> impl Iterator<Item = &N> + '_ {
@@ -312,7 +302,7 @@ impl<'a, N> EquationView<'a, N> {
 
 #[allow(unused)]
 impl<'a, N: Clone> EquationView<'a, N> {
-    pub fn to_owned(&self) -> Equation<N> {
+    pub fn to_owned(self) -> Equation<N> {
         Equation {
             data: self.data.to_owned(),
         }
@@ -326,11 +316,11 @@ impl<'a, N: Numeric> EquationView<'a, N> {
 
     pub fn equation_display(
         &self,
-        varmap: &'a Vec<VariableIndex>,
+        varmap: &'a [VariableIndex],
     ) -> impl fmt::Display + 'a {
         struct EquationDisplay<'a, N> {
             equation: EquationView<'a, N>,
-            varmap: &'a Vec<VariableIndex>,
+            varmap: &'a [VariableIndex],
         }
 
         impl<'a, N: Numeric> fmt::Display for EquationDisplay<'a, N> {
@@ -373,13 +363,13 @@ impl<'a, N: Numeric> EquationView<'a, N> {
 
 impl<'a, N: Numeric> EquationViewMut<'a, N> {
     pub fn get_result(&mut self) -> &mut N {
-        return &mut self.data[0];
+        &mut self.data[0]
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
     pub fn get_coefficient(&mut self, idx: usize) -> &mut N {
-        return &mut self.data[idx + 1];
+        &mut self.data[idx + 1]
     }
 
     pub fn iter_coefficients(&mut self) -> impl Iterator<Item = &mut N> + '_ {
@@ -395,6 +385,7 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
         self.data.iter_mut().for_each(|i| i.assign(0));
     }
 
+    #[allow(unused)]
     pub fn to_owned(&self) -> Equation<N> {
         Equation {
             data: self.data.to_owned(),
@@ -406,11 +397,8 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
     }
 
     #[allow(unused)]
-    pub fn display(
-        &'a self,
-        varmap: &'a Vec<VariableIndex>,
-    ) -> impl fmt::Display + 'a {
-        EquationView { data: &self.data }.equation_display(varmap)
+    pub fn display(&'a self, varmap: &'a [VariableIndex]) -> impl fmt::Display + 'a {
+        EquationView { data: self.data }.equation_display(varmap)
     }
 
     pub fn copy_into(&mut self, other: EquationView<'_, N>) {
@@ -428,15 +416,16 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
     }
 }
 
+#[allow(unused)]
 impl<N: Numeric> Equation<N> {
     pub fn get_result(&self) -> &N {
-        return &self.data[0];
+        &self.data[0]
     }
 
     /// Returns a coefficient of the equation.
     /// `idx` is not the variable index, but the index where it is stored in memory.
     pub fn get_coefficient(&self, idx: usize) -> &N {
-        return &self.data[idx + 1];
+        &self.data[idx + 1]
     }
 
     pub fn iter_coefficients(&self) -> impl Iterator<Item = &N> + '_ {
@@ -446,7 +435,7 @@ impl<N: Numeric> Equation<N> {
     #[allow(unused)]
     pub fn display<'a>(
         &'a self,
-        varmap: &'a Vec<VariableIndex>,
+        varmap: &'a [VariableIndex],
     ) -> impl fmt::Display + '_ {
         EquationView { data: &self.data }.equation_display(varmap)
     }

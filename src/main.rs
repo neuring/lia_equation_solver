@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
         if !config.no_verify {
             let assignment: Vec<_> = result
                 .into_iter()
-                .map(|x| x.map(|e| e.constant.clone()).unwrap_or(N::from(0)))
+                .map(|x| x.map(|e| e.constant).unwrap_or_else(|| N::from(0)))
                 .collect();
 
             match original_system.evaluate(&assignment) {
