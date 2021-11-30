@@ -1,5 +1,5 @@
 [package]
-name = "linear_solver"
+name = "lia_equation_solver"
 version = "0.1.0"
 edition = "2018"
 authors = ["neuring <neuring@pm.me>"]

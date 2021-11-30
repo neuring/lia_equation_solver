@@ -220,7 +220,7 @@ impl<N> EquationStorage<N> {
 
     /// Returns the number of equations in the system of equations.
     pub fn get_equations(&self) -> usize {
-        self.variables
+        self.equations
     }
 
     #[allow(unused)]
