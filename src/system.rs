@@ -6,6 +6,19 @@ use crate::{numeric::Numeric, util};
 pub struct VariableIndex(pub usize);
 
 #[derive(Debug, Clone)]
+pub struct VariableGenerator {
+    pub next_var_index: usize,
+}
+
+impl VariableGenerator {
+    pub fn new_variable(&mut self) -> VariableIndex {
+        let var = VariableIndex(self.next_var_index);
+        self.next_var_index += 1;
+        var
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct System<N> {
     pub varmap: Vec<VariableIndex>,
 
@@ -13,7 +26,7 @@ pub struct System<N> {
 
     pub killed_variables: usize,
 
-    pub next_var_index: usize,
+    pub var_generator: VariableGenerator,
 
     pub starting_variables: usize,
 
@@ -26,7 +39,9 @@ impl<N: Numeric> System<N> {
     pub fn new(variables: usize) -> Self {
         Self {
             varmap: (0..variables).map(VariableIndex).collect(),
-            next_var_index: variables,
+            var_generator: VariableGenerator {
+                next_var_index: variables,
+            },
 
             alive_terms: vec![true; variables],
             killed_variables: 0,
@@ -37,12 +52,6 @@ impl<N: Numeric> System<N> {
 
             storage: EquationStorage::new(variables),
         }
-    }
-
-    pub fn new_variable(&mut self) -> VariableIndex {
-        let var = VariableIndex(self.next_var_index);
-        self.next_var_index += 1;
-        var
     }
 
     pub fn map_variable(&mut self, term_idx: usize, variable_idx: VariableIndex) {
@@ -206,7 +215,7 @@ pub struct EquationViewMut<'a, N> {
 
 #[derive(Debug, Clone)]
 pub struct Equation<N> {
-    data: Vec<N>,
+    pub data: Vec<N>,
 }
 
 impl<N> EquationStorage<N> {
@@ -401,7 +410,7 @@ impl<'a, N: Numeric> EquationViewMut<'a, N> {
         EquationView { data: self.data }.equation_display(varmap)
     }
 
-    pub fn copy_into(&mut self, other: EquationView<'_, N>) {
+    pub fn copy_from(&mut self, other: EquationView<'_, N>) {
         for (s, o) in self.data.iter_mut().zip(other.data.iter()) {
             s.clone_from(o);
         }
@@ -438,6 +447,16 @@ impl<N: Numeric> Equation<N> {
         varmap: &'a [VariableIndex],
     ) -> impl fmt::Display + '_ {
         EquationView { data: &self.data }.equation_display(varmap)
+    }
+
+    pub fn as_mut(&mut self) -> EquationViewMut<N> {
+        EquationViewMut {
+            data: &mut self.data,
+        }
+    }
+
+    pub fn as_ref(&self) -> EquationView<N> {
+        EquationView { data: &self.data }
     }
 }
 

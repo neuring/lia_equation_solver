@@ -1,7 +1,10 @@
 use crate::{
     math,
     numeric::Numeric,
-    system::{EquationStorage, EquationView, EquationViewMut, System},
+    system::{
+        Equation, EquationStorage, EquationView, EquationViewMut, System,
+        VariableIndex,
+    },
 };
 
 struct ScratchData<N> {
@@ -11,6 +14,7 @@ struct ScratchData<N> {
     pub scratch2: N,
     pub scratch3: N,
     pub scratch4: N,
+    pub scratch5: N,
 }
 
 impl<N: Numeric> ScratchData<N> {
@@ -21,6 +25,7 @@ impl<N: Numeric> ScratchData<N> {
             scratch2: N::from(0),
             scratch3: N::from(0),
             scratch4: N::from(0),
+            scratch5: N::from(0),
         }
     }
 }
@@ -200,7 +205,7 @@ fn eliminate_equation<N: Numeric>(
     let mut eliminated_equation_copy = EquationViewMut {
         data: &mut scratch.scratch_pad[..storage_variables + 1],
     };
-    eliminated_equation_copy.copy_into(eliminated_equation.as_ref());
+    eliminated_equation_copy.copy_from(eliminated_equation.as_ref());
 
     // Remove equation from storage
     eliminated_equation.clear();
@@ -254,81 +259,186 @@ fn reduce_coefficients<N: Numeric>(
 
     let storage_variables = storage.variables;
 
+    let mut new_varmap = system.varmap.clone();
+
+    let mut substitutions: Vec<Option<Equation<N>>> = vec![None; storage_variables];
+
     let mut equation = storage.get_equation_mut(equation_idx);
 
-    let coefficient = &mut scratch.scratch4;
-    coefficient.clone_from(equation.get_coefficient(coefficient_idx));
+    //println!("reducing equation {}", equation.display(&new_varmap));
 
-    // println!("reducing coefficient {}", coefficient);
+    loop {
+        if equation
+            .iter_coefficients()
+            .filter(|c| c.cmp_zero().is_ne())
+            .count()
+            <= 1
+        {
+            break;
+        }
 
-    let original_coefficient_idx = coefficient_idx;
+        let cur_min_coef = &mut scratch.scratch1;
+        let (cur_min_coef_idx, min_coef) = equation
+            .iter_coefficients()
+            .enumerate()
+            .filter(|(_, v)| v.cmp_zero().is_ne())
+            .min_by(|(_, a), (_, b)| a.abs_compare(b))
+            .unwrap();
 
-    if coefficient.cmp_zero().is_lt() {
-        equation.data.iter_mut().for_each(|c| c.negate());
-        coefficient.negate();
+        //println!("min_coef = {}", min_coef);
+
+        if min_coef == &1 || min_coef == &-1 {
+            break;
+        }
+
+        cur_min_coef.clone_from(&*min_coef);
+
+        if cur_min_coef.cmp_zero().is_lt() {
+            equation.data.iter_mut().for_each(|c| c.negate());
+            cur_min_coef.negate();
+        }
+
+        let m = &mut scratch.scratch2;
+        m.clone_from(&*cur_min_coef);
+        *m += 1;
+
+        let minus_m = &mut scratch.scratch3;
+        minus_m.clone_from(m);
+        minus_m.negate();
+
+        let mut substitution_term = EquationViewMut {
+            data: &mut scratch.scratch_pad[..storage_variables + 1],
+        };
+
+        for (coefficient, coefficient_idx) in equation.data.iter_mut().zip(0..) {
+            // + 1, because this loop starts with the result element as zero, not the first coefficient.
+            if coefficient_idx == cur_min_coef_idx + 1 {
+                assert!(coefficient_idx > 0);
+
+                coefficient.negate();
+
+                substitution_term.data[coefficient_idx].clone_from(&*minus_m);
+            } else {
+                let rounded_div = &mut scratch.scratch4;
+                let sm = &mut scratch.scratch5;
+                math::special_mod(sm, rounded_div, &*coefficient, m);
+
+                coefficient.clone_from(rounded_div);
+                *coefficient += &*sm;
+                substitution_term.data[coefficient_idx].clone_from(sm);
+            }
+        }
+
+        for (idx, subst) in substitutions.iter_mut().enumerate() {
+            match subst {
+                Some(subst) => substitute_variable_with_term(
+                    subst.as_mut(),
+                    cur_min_coef_idx,
+                    substitution_term.as_ref(),
+                    &mut scratch.scratch4,
+                    &mut scratch.scratch5,
+                ),
+                None if idx == cur_min_coef_idx => {
+                    *subst = Some(substitution_term.to_owned())
+                }
+                _ => {}
+            }
+        }
+
+        let old_var = new_varmap[cur_min_coef_idx];
+        let new_var = system.var_generator.new_variable();
+        new_varmap[cur_min_coef_idx] = new_var;
+
+        //println!("equation after reduction {}", equation.display(&new_varmap));
+
+        //println!(
+        //    "new substitution {} = {}",
+        //    crate::util::fmt_variable(old_var, storage_variables),
+        //    substitution_term.display(&new_varmap)
+        //);
+
+        //println!("collected substitutions:");
+        //for (idx, s) in substitutions.iter().enumerate() {
+        //    if let Some(s) = s {
+        //        println!(
+        //            "{} = {}",
+        //            crate::util::fmt_variable(system.varmap[idx], storage_variables),
+        //            s.display(&new_varmap)
+        //        );
+        //    }
+        //}
+
+        // Add substitution to reconstruction
+        let terms = substitution_term
+            .iter_coefficients()
+            .enumerate()
+            .filter(|(_, c)| c.cmp_zero().is_ne())
+            .map(|(i, c)| (new_varmap[i], c.clone()))
+            .collect();
+        let constant = substitution_term.get_result().clone();
+        system.reconstruction.add(old_var, terms, constant);
     }
 
-    let m = &mut scratch.scratch1;
-    m.clone_from(&*coefficient);
-    *m += 1;
+    for (_, equation) in storage
+        .iter_equations_mut()
+        .enumerate()
+        .filter(|(eq_idx, _)| *eq_idx != equation_idx)
+    {
+        apply_all_substitutions(
+            equation,
+            &substitutions,
+            storage_variables,
+            scratch,
+            &new_varmap,
+        );
+    }
 
-    let substitution_term = EquationViewMut {
+    system.varmap = new_varmap;
+}
+
+fn apply_all_substitutions<N: Numeric>(
+    mut equation: EquationViewMut<N>,
+    substitutions: &[Option<Equation<N>>],
+    storage_variables: usize,
+    scratch: &mut ScratchData<N>,
+    varmap: &[VariableIndex],
+) {
+    let mut new_equation = EquationViewMut {
         data: &mut scratch.scratch_pad[..storage_variables + 1],
     };
 
-    for (coefficient, coefficient_idx) in equation.data.iter_mut().zip(0..) {
-        // + 1, because this loop starts with the result element as zero, not the first coefficient.
-        if coefficient_idx == original_coefficient_idx + 1 {
-            assert!(coefficient_idx > 0);
+    new_equation.get_result().clone_from(equation.get_result());
 
-            coefficient.negate();
-
-            let minus_m = &mut scratch.scratch2;
-            minus_m.clone_from(m);
-            minus_m.negate();
-
-            substitution_term.data[coefficient_idx].clone_from(&*minus_m);
+    for (i, s) in substitutions.iter().enumerate() {
+        if s.is_none() {
+            new_equation
+                .get_coefficient(i)
+                .clone_from(equation.get_coefficient(i));
         } else {
-            let rounded_div = &mut scratch.scratch2;
-            let sm = &mut scratch.scratch3;
-            math::special_mod(sm, rounded_div, &*coefficient, m);
-
-            coefficient.clone_from(rounded_div);
-            *coefficient += &*sm;
-            substitution_term.data[coefficient_idx].clone_from(sm);
+            new_equation.get_coefficient(i).assign(0);
         }
     }
 
-    let substitution_term = substitution_term.into_ref();
+    //println!("Applying all substitutions:");
 
-    for equation in storage
-        .iter_equations_mut()
-        .enumerate()
-        .filter(|(eq_idx, eq)| !eq.is_empty() && *eq_idx != equation_idx)
-        .map(|(_, eq)| eq)
-    {
-        substitute_variable_with_term(
-            equation,
-            original_coefficient_idx,
-            substitution_term,
-            &mut scratch.scratch2,
-            &mut scratch.scratch3,
-        )
+    for (subst_idx, subst) in substitutions.iter().enumerate() {
+        if let Some(subst) = subst {
+            //println!("current result {}", new_equation.display(varmap));
+            let factor = equation.get_coefficient(subst_idx);
+
+            for (data_idx, subst_coef) in subst.data.iter().enumerate() {
+                let s = &mut scratch.scratch1;
+                s.clone_from(factor);
+                *s *= subst_coef;
+
+                new_equation.data[data_idx] += &*s
+            }
+        }
     }
 
-    let old_var = system.varmap[original_coefficient_idx];
-    let new_var = system.new_variable();
-    system.map_variable(original_coefficient_idx, new_var);
+    //println!("final result {}", new_equation.display(varmap));
 
-    // Add substitution to reconstruction
-    let terms = substitution_term
-        .iter_coefficients()
-        .enumerate()
-        .filter(|(_, c)| c.cmp_zero().is_ne())
-        .map(|(i, c)| (system.varmap[i], c.clone()))
-        .collect();
-    let constant = substitution_term.get_result().clone();
-    system.reconstruction.add(old_var, terms, constant);
+    equation.copy_from(new_equation.as_ref());
 }
 
 fn simplify<N: Numeric>(

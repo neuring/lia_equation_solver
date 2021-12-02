@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
 
         let result = system
             .reconstruction
-            .evaluate_solution(system.next_var_index, &mut N::from(0));
+            .evaluate_solution(system.var_generator.next_var_index, &mut N::from(0));
 
         for (i, res) in result.iter().cloned().enumerate() {
             if i >= system.starting_variables {
