@@ -1,5 +1,8 @@
 use std::{collections::HashMap, fmt};
 
+use rayon::iter::IndexedParallelIterator;
+use rayon::{iter::ParallelIterator, slice::ParallelSliceMut};
+
 use crate::{numeric::Numeric, util};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -289,6 +292,17 @@ impl<N: Numeric> EquationStorage<N> {
         self.equations += 1;
 
         self.get_equation_mut(equation_idx)
+    }
+
+    pub fn par_iter_equations_mut(
+        &mut self,
+    ) -> impl IndexedParallelIterator<Item = EquationViewMut<'_, N>> + '_ {
+        let equation_size = self.get_equation_size();
+        self.data
+            .par_chunks_exact_mut(equation_size)
+            .map(|equation_data| EquationViewMut {
+                data: equation_data,
+            })
     }
 }
 

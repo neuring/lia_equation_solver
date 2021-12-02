@@ -24,6 +24,8 @@ pub trait Numeric:
     + Eq
     + PartialOrd<i64>
     + Ord
+    + Send
+    + Sync
     + 'static
 {
     /// after calling this function self contains the euclidean quotient and rhs might

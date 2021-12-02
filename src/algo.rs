@@ -7,6 +7,8 @@ use crate::{
     },
 };
 
+use rayon::iter::{IndexedParallelIterator, ParallelIterator};
+
 struct ScratchData<N> {
     pub scratch_pad: Vec<N>,
 
@@ -66,7 +68,6 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
                 "eliminated: {} (reductions inbetween: {})",
                 system.killed_variables, reductions_between_eliminations,
             );
-            reductions_between_eliminations = 0;
             //println!("After elimination\n{}", system.equations_display());
             eliminates_since_last_resize += 1;
 
@@ -82,7 +83,7 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
             //}
         } else {
             assert_ne!(result.coefficient, &0);
-            reduce_coefficients(
+            reductions_between_eliminations = reduce_coefficients(
                 system,
                 result.equation_idx,
                 result.coefficient_idx,
@@ -90,8 +91,6 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
             );
 
             //println!("After reduce\n{}", system.equations_display());
-
-            reductions_between_eliminations += 1;
         }
         if !simplify(system, &mut scratch) {
             return Result::Unsat;
@@ -254,7 +253,7 @@ fn reduce_coefficients<N: Numeric>(
     equation_idx: usize,
     coefficient_idx: usize,
     scratch: &mut ScratchData<N>,
-) {
+) -> u32 {
     let storage = &mut system.storage;
 
     let storage_variables = storage.variables;
@@ -267,7 +266,9 @@ fn reduce_coefficients<N: Numeric>(
 
     //println!("reducing equation {}", equation.display(&new_varmap));
 
+    let mut reductions = 0;
     loop {
+        //println!("reduce");
         if equation
             .iter_coefficients()
             .filter(|c| c.cmp_zero().is_ne())
@@ -377,35 +378,37 @@ fn reduce_coefficients<N: Numeric>(
             .collect();
         let constant = substitution_term.get_result().clone();
         system.reconstruction.add(old_var, terms, constant);
+
+        reductions += 1;
     }
 
-    for (_, equation) in storage
-        .iter_equations_mut()
+    //println!("apply");
+
+    storage
+        .par_iter_equations_mut()
         .enumerate()
         .filter(|(eq_idx, _)| *eq_idx != equation_idx)
-    {
-        apply_all_substitutions(
-            equation,
-            &substitutions,
-            storage_variables,
-            scratch,
-            &new_varmap,
-        );
-    }
+        .for_each(|(_, equation)| {
+            apply_all_substitutions(equation, &substitutions, storage_variables)
+        });
+
+    //println!("done");
 
     system.varmap = new_varmap;
+    reductions
 }
 
 fn apply_all_substitutions<N: Numeric>(
     mut equation: EquationViewMut<N>,
     substitutions: &[Option<Equation<N>>],
     storage_variables: usize,
-    scratch: &mut ScratchData<N>,
-    varmap: &[VariableIndex],
 ) {
-    let mut new_equation = EquationViewMut {
-        data: &mut scratch.scratch_pad[..storage_variables + 1],
+    let mut new_equation = Equation {
+        data: vec![N::from(0); storage_variables + 1],
     };
+    let mut scratch = N::from(0);
+
+    let mut new_equation = new_equation.as_mut();
 
     new_equation.get_result().clone_from(equation.get_result());
 
@@ -427,7 +430,7 @@ fn apply_all_substitutions<N: Numeric>(
             let factor = equation.get_coefficient(subst_idx);
 
             for (data_idx, subst_coef) in subst.data.iter().enumerate() {
-                let s = &mut scratch.scratch1;
+                let s = &mut scratch;
                 s.clone_from(factor);
                 *s *= subst_coef;
 
