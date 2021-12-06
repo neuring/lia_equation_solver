@@ -57,10 +57,6 @@ impl<N: Numeric> System<N> {
         }
     }
 
-    pub fn map_variable(&mut self, term_idx: usize, variable_idx: VariableIndex) {
-        self.varmap[term_idx] = variable_idx;
-    }
-
     pub fn kill_variable(&mut self, term_idx: usize) {
         self.killed_variables += 1;
         self.alive_terms[term_idx] = false;

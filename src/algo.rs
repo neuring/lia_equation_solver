@@ -1,10 +1,7 @@
 use crate::{
     math,
     numeric::Numeric,
-    system::{
-        Equation, EquationStorage, EquationView, EquationViewMut, System,
-        VariableIndex,
-    },
+    system::{Equation, EquationStorage, EquationView, EquationViewMut, System},
 };
 
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -83,12 +80,8 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
             //}
         } else {
             assert_ne!(result.coefficient, &0);
-            reductions_between_eliminations = reduce_coefficients(
-                system,
-                result.equation_idx,
-                result.coefficient_idx,
-                &mut scratch,
-            );
+            reductions_between_eliminations =
+                reduce_coefficients(system, result.equation_idx, &mut scratch);
 
             //println!("After reduce\n{}", system.equations_display());
         }
@@ -251,7 +244,6 @@ fn eliminate_equation<N: Numeric>(
 fn reduce_coefficients<N: Numeric>(
     system: &mut System<N>,
     equation_idx: usize,
-    coefficient_idx: usize,
     scratch: &mut ScratchData<N>,
 ) -> u32 {
     let storage = &mut system.storage;
