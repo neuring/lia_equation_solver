@@ -1,4 +1,7 @@
-use std::path::PathBuf;
+use std::{
+    io::{BufWriter, Write},
+    path::PathBuf,
+};
 
 use anyhow::Context;
 use structopt::StructOpt;
@@ -9,6 +12,7 @@ mod algo;
 mod math;
 mod numeric;
 mod parser;
+mod smtlib;
 mod system;
 mod util;
 
@@ -23,10 +27,13 @@ struct Config {
 
 #[derive(Debug, StructOpt)]
 enum Command {
-    /// Convert input to smt-lib format
-    ToSMTLib { output: Option<PathBuf> },
+    /// Convert input to smtlib format
+    ToSmtlib {
+        #[structopt(short)]
+        output: Option<PathBuf>,
+    },
 
-    /// Solve system of equation.
+    /// Solve system of equations
     Solve(SolverConfig),
 }
 
@@ -34,7 +41,7 @@ enum Command {
 struct SolverConfig {
     /// dump solution as dot graph
     #[structopt(short, long)]
-    dump_dot: Option<PathBuf>,
+    dot_solution: Option<PathBuf>,
 
     /// Do not verify the solution
     #[structopt(short, long)]
@@ -55,7 +62,7 @@ fn solver_main(mut system: System<N>, config: &SolverConfig) -> anyhow::Result<(
     if result == algo::Result::Sat {
         println!("Solvable");
 
-        if let Some(dump_path) = config.dump_dot.as_ref() {
+        if let Some(dump_path) = config.dot_solution.as_ref() {
             let f = std::fs::File::create(dump_path)?;
             system
                 .reconstruction
@@ -105,7 +112,19 @@ fn solver_main(mut system: System<N>, config: &SolverConfig) -> anyhow::Result<(
 }
 
 fn smtlib_main(system: System<N>, out_path: Option<PathBuf>) -> anyhow::Result<()> {
-    todo!()
+    let stdout = std::io::stdout();
+
+    let mut out_writer: Box<dyn Write + '_> = match out_path {
+        Some(path) => {
+            let file = std::fs::File::create(&path).with_context(|| {
+                format!("Couldn't create file '{}'", path.to_string_lossy())
+            })?;
+            Box::new(BufWriter::new(file))
+        }
+        None => Box::new(stdout.lock()),
+    };
+
+    smtlib::write_smtlib(&system, &mut out_writer)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -119,7 +138,7 @@ fn main() -> anyhow::Result<()> {
         parser::parse(&input).context("Failed to parse input.")?;
 
     match config.command {
-        Command::ToSMTLib { output } => todo!(),
+        Command::ToSmtlib { output } => smtlib_main(system, output),
         Command::Solve(solver_config) => solver_main(system, &solver_config),
     }
 }
