@@ -40,14 +40,22 @@ impl Config {
 }
 
 #[derive(Debug, StructOpt)]
-struct SolverConfig {
+pub struct SolverConfig {
+    // Do not collect information for a solution,
+    // if it exists.
+    #[structopt(long)]
+    no_solution: bool,
+
     /// dump solution as dot graph
-    #[structopt(short, long)]
+    #[structopt(long)]
     dot_solution: Option<PathBuf>,
 
     /// Do not verify the solution
-    #[structopt(short, long)]
+    #[structopt(long)]
     no_verify: bool,
+
+    #[structopt(long)]
+    silent: bool,
 
     /// Path to input file
     input: PathBuf,
@@ -58,51 +66,57 @@ type N = rug::Integer;
 fn solver_main(mut system: System<N>, config: &SolverConfig) -> anyhow::Result<()> {
     let original_system = system.clone();
 
-    if system.starting_variables <= 10 {
+    if !config.silent && system.starting_variables <= 10 {
         println!("{}", system.equations_display());
     }
 
-    let result = algo::solve_equation(&mut system);
+    let result = algo::solve_equation(&mut system, config);
 
     if result == algo::Result::Sat {
         println!("Solvable");
 
-        if let Some(dump_path) = config.dot_solution.as_ref() {
-            let f = std::fs::File::create(dump_path)?;
-            system
-                .reconstruction
-                .dump_dot(system.storage.variables, f)?;
-        }
-
-        let result = system
-            .reconstruction
-            .evaluate_solution(system.var_generator.next_var_index, &mut N::from(0));
-
-        for (i, res) in result.iter().cloned().enumerate() {
-            if i >= system.starting_variables {
-                break;
+        if !config.no_solution {
+            if let Some(dump_path) = config.dot_solution.as_ref() {
+                let f = std::fs::File::create(dump_path)?;
+                system
+                    .reconstruction
+                    .dump_dot(system.storage.variables, f)?;
             }
-            if let Some(res) = res {
-                println!(
-                    "{} = {}",
-                    util::fmt_variable(VariableIndex(i), system.starting_variables),
-                    res.display_solution()
-                )
+
+            let result = system.reconstruction.evaluate_solution(
+                system.var_generator.next_var_index,
+                &mut N::from(0),
+            );
+
+            for (i, res) in result.iter().cloned().enumerate() {
+                if i >= system.starting_variables {
+                    break;
+                }
+                if let Some(res) = res {
+                    println!(
+                        "{} = {}",
+                        util::fmt_variable(
+                            VariableIndex(i),
+                            system.starting_variables
+                        ),
+                        res.display_solution()
+                    )
+                }
             }
-        }
 
-        if !config.no_verify {
-            let assignment: Vec<_> = result
-                .into_iter()
-                .map(|x| x.map(|e| e.constant).unwrap_or_else(|| N::from(0)))
-                .collect();
+            if !config.no_verify {
+                let assignment: Vec<_> = result
+                    .into_iter()
+                    .map(|x| x.map(|e| e.constant).unwrap_or_else(|| N::from(0)))
+                    .collect();
 
-            match original_system.evaluate(&assignment) {
-                Ok(()) => println!("solution verified."),
-                Err(equation) => println!(
-                    "wrong solution: {}",
-                    equation.equation_display(&original_system.varmap)
-                ),
+                match original_system.evaluate(&assignment) {
+                    Ok(()) => println!("solution verified."),
+                    Err(equation) => println!(
+                        "wrong solution: {}",
+                        equation.equation_display(&original_system.varmap)
+                    ),
+                }
             }
         }
     } else {
@@ -112,7 +126,7 @@ fn solver_main(mut system: System<N>, config: &SolverConfig) -> anyhow::Result<(
     if result == algo::Result::Sat {
         Ok(())
     } else {
-        Err(anyhow::anyhow!(""))
+        std::process::exit(1);
     }
 }
 

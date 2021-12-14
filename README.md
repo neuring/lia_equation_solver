@@ -20,3 +20,5 @@ or using the binary directly:
 ```
 ./target/release/lia_equation_solver solve path/to/input-file
 ```
+
+For maximal performance (during benchmarking), please add the flags `--silent` and `--no-solution`.

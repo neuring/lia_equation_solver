@@ -2,6 +2,7 @@ use crate::{
     math,
     numeric::Numeric,
     system::{Equation, EquationStorage, EquationView, EquationViewMut, System},
+    SolverConfig,
 };
 
 use rayon::iter::{IndexedParallelIterator, ParallelIterator};
@@ -35,7 +36,10 @@ pub enum Result {
     Unsat,
 }
 
-pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
+pub fn solve_equation<N: Numeric>(
+    system: &mut System<N>,
+    config: &SolverConfig,
+) -> Result {
     let mut scratch = ScratchData::new(system.storage.variables);
 
     //let mut debug_out = std::io::BufWriter::new(
@@ -60,11 +64,15 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
                 result.equation_idx,
                 result.coefficient_idx,
                 &mut scratch,
+                config,
             );
-            println!(
-                "eliminated: {} (reductions inbetween: {})",
-                system.killed_variables, reductions_between_eliminations,
-            );
+
+            if !config.silent {
+                println!(
+                    "eliminated: {} (reductions inbetween: {})",
+                    system.killed_variables, reductions_between_eliminations,
+                );
+            }
             //println!("After elimination\n{}", system.equations_display());
             eliminates_since_last_resize += 1;
 
@@ -80,8 +88,12 @@ pub fn solve_equation<N: Numeric>(system: &mut System<N>) -> Result {
             //}
         } else {
             assert_ne!(result.coefficient, &0);
-            reductions_between_eliminations =
-                reduce_coefficients(system, result.equation_idx, &mut scratch);
+            reductions_between_eliminations = reduce_coefficients(
+                system,
+                result.equation_idx,
+                &mut scratch,
+                config,
+            );
 
             //println!("After reduce\n{}", system.equations_display());
         }
@@ -176,6 +188,7 @@ fn eliminate_equation<N: Numeric>(
     eliminated_equation_idx: usize,
     eliminated_coefficient_idx: usize,
     scratch: &mut ScratchData<N>,
+    config: &SolverConfig,
 ) {
     let storage = &mut system.storage;
     let varmap = &system.varmap;
@@ -215,18 +228,20 @@ fn eliminate_equation<N: Numeric>(
     // seal term to prevent accidental mutation
     let eliminated_equation = eliminated_equation_copy.into_ref();
 
-    // Add eliminated equation to reconstruction
-    let terms = eliminated_equation
-        .iter_coefficients()
-        .enumerate()
-        .filter(|&(_, c)| c.cmp_zero().is_ne())
-        .map(|(i, c)| (varmap[i], c.clone()))
-        .collect();
+    if !config.no_solution {
+        // Add eliminated equation to reconstruction
+        let terms = eliminated_equation
+            .iter_coefficients()
+            .enumerate()
+            .filter(|&(_, c)| c.cmp_zero().is_ne())
+            .map(|(i, c)| (varmap[i], c.clone()))
+            .collect();
 
-    let constant = eliminated_equation.get_result().clone();
+        let constant = eliminated_equation.get_result().clone();
 
-    let var = system.varmap[eliminated_coefficient_idx];
-    system.reconstruction.add(var, terms, constant);
+        let var = system.varmap[eliminated_coefficient_idx];
+        system.reconstruction.add(var, terms, constant);
+    }
 
     for equation in storage.iter_equations_mut().filter(|eq| !eq.is_empty()) {
         substitute_variable_with_term(
@@ -245,6 +260,7 @@ fn reduce_coefficients<N: Numeric>(
     system: &mut System<N>,
     equation_idx: usize,
     scratch: &mut ScratchData<N>,
+    config: &SolverConfig,
 ) -> u32 {
     let storage = &mut system.storage;
 
@@ -362,14 +378,16 @@ fn reduce_coefficients<N: Numeric>(
         //}
 
         // Add substitution to reconstruction
-        let terms = substitution_term
-            .iter_coefficients()
-            .enumerate()
-            .filter(|(_, c)| c.cmp_zero().is_ne())
-            .map(|(i, c)| (new_varmap[i], c.clone()))
-            .collect();
-        let constant = substitution_term.get_result().clone();
-        system.reconstruction.add(old_var, terms, constant);
+        if !config.no_solution {
+            let terms = substitution_term
+                .iter_coefficients()
+                .enumerate()
+                .filter(|(_, c)| c.cmp_zero().is_ne())
+                .map(|(i, c)| (new_varmap[i], c.clone()))
+                .collect();
+            let constant = substitution_term.get_result().clone();
+            system.reconstruction.add(old_var, terms, constant);
+        }
 
         reductions += 1;
     }
