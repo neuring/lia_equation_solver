@@ -1,6 +1,6 @@
 use std::{
     io::{BufWriter, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use anyhow::Context;
@@ -17,24 +17,26 @@ mod system;
 mod util;
 
 #[derive(Debug, StructOpt)]
-struct Config {
-    #[structopt(subcommand)]
-    command: Command,
-
-    /// Path to input file
-    input: PathBuf,
-}
-
-#[derive(Debug, StructOpt)]
-enum Command {
+enum Config {
     /// Convert input to smtlib format
     ToSmtlib {
         #[structopt(short)]
         output: Option<PathBuf>,
+        /// Path to input file
+        input: PathBuf,
     },
 
     /// Solve system of equations
     Solve(SolverConfig),
+}
+
+impl Config {
+    fn get_input_path(&self) -> &Path {
+        match self {
+            Config::ToSmtlib { input, .. } => &input,
+            Config::Solve(solver_config) => &solver_config.input,
+        }
+    }
 }
 
 #[derive(Debug, StructOpt)]
@@ -46,6 +48,9 @@ struct SolverConfig {
     /// Do not verify the solution
     #[structopt(short, long)]
     no_verify: bool,
+
+    /// Path to input file
+    input: PathBuf,
 }
 
 type N = rug::Integer;
@@ -130,15 +135,19 @@ fn smtlib_main(system: System<N>, out_path: Option<PathBuf>) -> anyhow::Result<(
 fn main() -> anyhow::Result<()> {
     let config = Config::from_args();
 
-    let input = std::fs::read_to_string(&config.input).with_context(|| {
-        format!("Couldn't read file '{}'", &config.input.to_string_lossy())
-    })?;
+    let input =
+        std::fs::read_to_string(config.get_input_path()).with_context(|| {
+            format!(
+                "Couldn't read file '{}'",
+                &config.get_input_path().to_string_lossy()
+            )
+        })?;
 
     let system: System<N> =
         parser::parse(&input).context("Failed to parse input.")?;
 
-    match config.command {
-        Command::ToSmtlib { output } => smtlib_main(system, output),
-        Command::Solve(solver_config) => solver_main(system, &solver_config),
+    match config {
+        Config::ToSmtlib { output, .. } => smtlib_main(system, output),
+        Config::Solve(solver_config, ..) => solver_main(system, &solver_config),
     }
 }
