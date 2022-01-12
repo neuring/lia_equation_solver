@@ -26,4 +26,22 @@ or using the binary directly:
 ./target/release/lia_equation_solver solve path/to/input-file
 ```
 
+# Run
+
 For maximal performance (during benchmarking), please add the flags `--silent` and `--no-solution`.
+
+```
+lia_equation_solver 0.1.0
+
+USAGE:
+    lia_equation_solver <SUBCOMMAND>
+
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+
+SUBCOMMANDS:
+    help         Prints this message or the help of the given subcommand(s)
+    solve        Solve system of equations
+    to-smtlib    Convert input to smtlib format
+```
